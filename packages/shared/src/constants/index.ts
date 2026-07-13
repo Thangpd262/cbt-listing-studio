@@ -1,4 +1,4 @@
-﻿export const ROLES = ['owner', 'admin', 'operator', 'viewer'] as const
+﻿export const ROLES = ['admin', 'operator'] as const
 export type Role = typeof ROLES[number]
 
 export const PLATFORMS = ['amazon', 'walmart', 'etsy', 'printify'] as const

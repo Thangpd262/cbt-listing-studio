@@ -1,15 +1,8 @@
-﻿export type Role = 'owner' | 'admin' | 'operator' | 'viewer'
-export type Platform = 'amazon' | 'walmart' | 'etsy' | 'printify'
-export type JobStatus = 'pending' | 'processing' | 'success' | 'failed'
+import type { Platform } from '../constants'
 
-export interface AuthContext {
-  account_id: string
-  user_id: string
-  role: Role
-  selling_account_id?: string
-  tier: 'free' | 'pro' | 'enterprise'
-}
-
+// Role, Platform, JobStatus are exported from ./constants (single source).
+// AuthContext is exported from ../middleware/withAuth (the shape withAuth produces).
+// This module only owns domain entity types.
 export interface SellingAccount {
   id: string
   account_id: string

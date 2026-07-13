@@ -1,3 +1,11 @@
-﻿export default function Home() {
-  return <div><h1>CBT Listing Studio</h1></div>
+import { useEffect } from 'react'
+import { useRouter } from 'next/router'
+
+// Entry point: bounce to the dashboard (AuthGuard handles the login redirect).
+export default function Home() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/dashboard')
+  }, [router])
+  return null
 }

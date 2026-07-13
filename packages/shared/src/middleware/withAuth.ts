@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 export type AuthContext = {
   account_id: string
   user_id: string
-  role: 'owner' | 'admin' | 'operator' | 'viewer'
+  role: 'admin' | 'operator'
   selling_account_id?: string
   tier: 'free' | 'pro' | 'enterprise'
   permissions: Array<{ selling_account_id: string; role: string }>
