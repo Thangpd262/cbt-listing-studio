@@ -15,7 +15,7 @@ export default function DashboardPage() {
     if (!apiKey) return
     crawlApi
       .getListings(apiKey)
-      .then((rows) => setListings(rows.length))
+      .then((res) => setListings(res.total))
       .catch(() => setListings('—'))
     generatorApi
       .getJobs(apiKey)
