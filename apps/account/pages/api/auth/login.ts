@@ -10,9 +10,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { email, password } = req.body ?? {}
   if (!email || !password) return error(res, 400, 'email and password are required')
 
-  const supabase = createSupabaseClient()
+  // Use a fresh service-key client for DB queries so the session from
+  // signInWithPassword never replaces the service-key credentials.
+  const authClient = createSupabaseClient()
+  const dbClient = createSupabaseClient()
 
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+  const { data: authData, error: authError } = await authClient.auth.signInWithPassword({
     email,
     password,
   })
@@ -20,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return error(res, 401, 'Invalid email or password')
   }
 
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await dbClient
     .from('app_users')
     .select('id, account_id, role, status')
     .eq('auth_user_id', authData.user.id)
