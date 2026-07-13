@@ -2,3 +2,5 @@
 export * from './constants'
 export * from './lib/response'
 export * from './lib/supabase'
+export * from './lib/errors'
+export * from './middleware/withAuth'
