@@ -1,0 +1,20 @@
+﻿{
+  "name": "cbt-listing-studio",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev:account": "turbo run dev --filter=@cbt/account",
+    "dev:hub": "turbo run dev --filter=@cbt/hub",
+    "dev:crawl": "turbo run dev --filter=@cbt/crawl",
+    "dev:generator": "turbo run dev --filter=@cbt/generator",
+    "dev:list-amz": "turbo run dev --filter=@cbt/list-amz",
+    "dev:list-wmt": "turbo run dev --filter=@cbt/list-wmt",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
