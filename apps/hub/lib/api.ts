@@ -139,10 +139,65 @@ export type TeamMember = {
 
 // ---- Crawl / Generator / List (X-API-Key; services arrive in later phases) ----
 
+export type CrawlListing = {
+  id: string
+  platform: 'etsy' | 'aliexpress' | 'printify' | 'amazon' | 'walmart'
+  source_url: string | null
+  title: string | null
+  description: string | null
+  shop_name: string | null
+  images: string[]
+  price: number | null
+  tags: string[]
+  crawl_purpose: 'normal' | 'tm'
+  status: 'ingested' | 'analyzing' | 'analyzed' | 'failed'
+  created_at: string
+}
+
+export type PaginatedResponse<T> = {
+  data: T[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
 export const crawlApi = {
-  async getListings(apiKey: string) {
-    const res = await fetch(`${CRAWL_URL}/api/listings`, { headers: apiKeyHeaders(apiKey) })
-    return unwrap<Array<Record<string, unknown>>>(res)
+  async getListings(
+    apiKey: string,
+    params: { page?: number; limit?: number; platform?: string; status?: string } = {}
+  ): Promise<PaginatedResponse<CrawlListing>> {
+    const q = new URLSearchParams()
+    if (params.page) q.set('page', String(params.page))
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.platform) q.set('platform', params.platform)
+    if (params.status) q.set('status', params.status)
+    const res = await fetch(`${CRAWL_URL}/api/listings?${q}`, { headers: apiKeyHeaders(apiKey) })
+    const body = await res.json() as { success: boolean; data: CrawlListing[]; meta?: { total: number; page: number; limit: number; pages: number }; error?: string }
+    if (!res.ok || !body.success) throw new Error(body.error ?? `Request failed (${res.status})`)
+    return {
+      data: body.data ?? [],
+      total: body.meta?.total ?? body.data?.length ?? 0,
+      page: body.meta?.page ?? 1,
+      limit: body.meta?.limit ?? 24,
+      totalPages: body.meta?.pages ?? 1,
+    }
+  },
+
+  async analyzeListing(apiKey: string, id: string) {
+    const res = await fetch(`${CRAWL_URL}/api/listings/${id}/analyze`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<Record<string, unknown>>(res)
+  },
+
+  async deleteListing(apiKey: string, id: string) {
+    const res = await fetch(`${CRAWL_URL}/api/listings/${id}`, {
+      method: 'DELETE',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<{ id: string; deleted: boolean }>(res)
   },
 }
 
