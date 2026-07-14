@@ -199,6 +199,15 @@ export const crawlApi = {
     })
     return unwrap<{ id: string; deleted: boolean }>(res)
   },
+
+  async updateListing(apiKey: string, id: string, body: { title: string }) {
+    const res = await fetch(`${CRAWL_URL}/api/listings/${id}`, {
+      method: 'PUT',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<{ id: string; title: string }>(res)
+  },
 }
 
 export type PromptTemplate = {

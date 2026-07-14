@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, Zap, Loader2, RotateCw, Trash2, User } from 'lucide-react'
-import { generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
+import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
 import { SYSTEM_CONFIGS, SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
 
 type GalleryImage = { id: string; url: string; ai?: boolean }
@@ -43,6 +43,13 @@ export default function CrawlJobPanel({
     () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...SAMPLE_AI_IMAGES.map((_, i) => `ai-${i}`)])
   )
   const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
+  // (a) editable SKU + price
+  const [sku, setSku] = useState(
+    () => `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
+  )
+  const [price, setPrice] = useState(String(listing.price))
+  // (b) title autosave status
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [config, setConfig] = useState('')
   const [aiDescription, setAiDescription] = useState(false)
   const [promptId, setPromptId] = useState('')
@@ -59,9 +66,29 @@ export default function CrawlJobPanel({
     [myConfigs, config]
   )
 
-  // sku + selling account are derived silently (not shown in this layout).
-  const autoSku = `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
+  // selling account is derived silently (not shown in this layout).
   const sellingAccountId = sellingAccounts[0]?.id ?? ''
+
+  // (b) debounce title changes → PUT crawl listing. Skips the initial render.
+  const firstRun = useRef(true)
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false
+      return
+    }
+    setSaveStatus('saving')
+    const t = setTimeout(async () => {
+      if (apiKey) {
+        try {
+          await crawlApi.updateListing(apiKey, listing.id, { title })
+        } catch {
+          // ignore — keep the local edit
+        }
+      }
+      setSaveStatus('saved')
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [title, apiKey, listing.id])
 
   function resolveConfigKey(sel: string): string | null {
     const mine = myConfigs.find((c) => c.id === sel)
@@ -149,10 +176,10 @@ export default function CrawlJobPanel({
       try {
         const r = await listAmzApi.createListing(apiKey, {
           selling_account_id: sellingAccountId,
-          sku: autoSku,
+          sku,
           config_key: configKey,
           ai_description: aiDescription,
-          field_values: { item_name: title, price: String(listing.price), img: mainUrl, images: extraUrls.join('\n') },
+          field_values: { item_name: title, price, img: mainUrl, images: extraUrls.join('\n') },
         })
         if (r.status === 'failed') alert(`Job đã tạo nhưng chạy lỗi: ${r.error ?? 'unknown'}`)
         onCreated()
@@ -163,7 +190,7 @@ export default function CrawlJobPanel({
       }
       return
     }
-    alert(`Đã tạo job cho SKU ${autoSku} → Jobs queue (demo — chưa nối service).`)
+    alert(`Đã tạo job cho SKU ${sku} → Jobs queue (demo — chưa nối service).`)
     onCreated()
   }
 
@@ -248,7 +275,10 @@ export default function CrawlJobPanel({
           onChange={(e) => setTitle(e.target.value)}
           className="field min-h-[64px] w-full resize-y"
         />
-        <div className="mb-3 mt-1 text-[10px] text-muted">{title.length} ký tự · tự lưu</div>
+        <div className="mb-3 mt-1 text-[10px] text-muted">
+          {title.length} ký tự ·{' '}
+          {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
+        </div>
 
         {/* Etsy images (all, no limit) */}
         <div className="mb-1 text-[11px] font-medium text-fg">
@@ -340,6 +370,18 @@ export default function CrawlJobPanel({
                   </option>
                 ))}
           </select>
+        </div>
+
+        {/* (a) editable SKU + price */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <div className="mb-1 text-[11px] text-muted">SKU</div>
+            <input value={sku} onChange={(e) => setSku(e.target.value)} className="field w-full" />
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] text-muted">Giá (USD)</div>
+            <input value={price} onChange={(e) => setPrice(e.target.value)} className="field w-full" />
+          </div>
         </div>
 
         <label className="flex cursor-pointer items-start gap-2">
