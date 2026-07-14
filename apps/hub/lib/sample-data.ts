@@ -48,6 +48,10 @@ export type SampleListing = {
   price: number
   hasJob: boolean
   images: string[]
+  // Left-column metadata (optional — absent for real rows that lack it).
+  username?: string
+  etsyId?: string
+  createdAt?: string
 }
 
 const img = (seed: string) => `https://picsum.photos/seed/${seed}/240/240`
@@ -61,6 +65,9 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 22.99,
     hasJob: false,
     images: [img('case1'), img('case2'), img('case3'), img('case4'), img('case5'), img('case6')],
+    username: 'vnam0142004',
+    etsyId: '1792611842',
+    createdAt: '2026-07-14',
   },
   {
     id: 's2',
@@ -70,6 +77,9 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 19.99,
     hasJob: true,
     images: [img('wild1'), img('wild2'), img('wild3')],
+    username: 'vnam0142004',
+    etsyId: '1805168638',
+    createdAt: '2026-07-14',
   },
   {
     id: 's3',
@@ -79,6 +89,9 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 24.99,
     hasJob: false,
     images: [],
+    username: 'vthang0091',
+    etsyId: '1843647245',
+    createdAt: '2026-07-13',
   },
 ]
 

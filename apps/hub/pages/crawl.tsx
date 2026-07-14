@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Plus, Zap, Eye, Trash2, ImageOff } from 'lucide-react'
+import { RefreshCw, Plus } from 'lucide-react'
 import Layout from '../components/Layout'
 import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } from '../components/CrawlJobPanel'
 import { useAuth } from '../lib/auth-context'
@@ -37,7 +37,6 @@ export default function CrawlPage() {
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
-  const [panelFor, setPanelFor] = useState<SampleListing | null>(null)
 
   const loadListings = useCallback(async () => {
     if (!apiKey) {
@@ -58,6 +57,7 @@ export default function CrawlPage() {
             price: l.price ?? 0,
             hasJob: false,
             images: l.images ?? [],
+            createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
           }))
         )
         setUsingSample(false)
@@ -140,7 +140,19 @@ export default function CrawlPage() {
 
   function handleCreated(id: string) {
     setListings((ls) => ls.map((l) => (l.id === id ? { ...l, hasJob: true } : l)))
-    setPanelFor(null)
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Xoá listing crawl này?')) return
+    if (apiKey && !usingSample) {
+      try {
+        await crawlApi.deleteListing(apiKey, id)
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Xoá thất bại')
+        return
+      }
+    }
+    setListings((ls) => ls.filter((l) => l.id !== id))
   }
 
   return (
@@ -181,48 +193,21 @@ export default function CrawlPage() {
         </div>
       )}
 
-      {/* Listing rows */}
-      <div className="grid gap-2">
-        {filtered.map((l) => (
-          <div
+      {/* One inline job card per crawled listing */}
+      <div className="grid gap-3">
+        {filtered.map((l, i) => (
+          <CrawlJobPanel
             key={l.id}
-            className="grid grid-cols-[60px_1fr_auto] items-center gap-2.5 rounded-[10px] border border-line bg-panel p-2.5"
-          >
-            {l.images[0] ? (
-              <img
-                src={l.images[0]}
-                alt=""
-                className="h-[60px] w-[60px] rounded-md border border-line object-cover"
-              />
-            ) : (
-              <div className="grid h-[60px] w-[60px] place-items-center rounded-md border border-line bg-panel2 text-muted">
-                <ImageOff size={20} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium text-fg">{l.title}</div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
-                {l.shop} · {l.group} · ${l.price.toFixed(2)} ·
-                <span className={`badge ${l.hasJob ? 'b-ac' : 'b-mu'}`}>
-                  {l.hasJob ? 'Đã tạo job' : 'Chưa tạo job'}
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-1.5">
-              {l.hasJob ? (
-                <button className="btn !text-[11px] text-muted">
-                  <Eye size={12} /> Xem job
-                </button>
-              ) : (
-                <button className="btn btn-acc !text-[11px]" onClick={() => setPanelFor(l)}>
-                  <Zap size={12} /> Tạo job
-                </button>
-              )}
-              <button className="btn !px-2 !py-1 !text-[11px]" title="Xoá">
-                <Trash2 size={12} />
-              </button>
-            </div>
-          </div>
+            listing={l}
+            index={i}
+            myConfigs={myConfigs}
+            prompts={prompts}
+            sellingAccounts={sellingAccounts}
+            apiKey={apiKey}
+            platform={platform}
+            onCreated={() => handleCreated(l.id)}
+            onDelete={() => handleDelete(l.id)}
+          />
         ))}
         {filtered.length === 0 && (
           <div className="rounded-[10px] border border-dashed border-line py-16 text-center text-xs text-muted">
@@ -230,20 +215,6 @@ export default function CrawlPage() {
           </div>
         )}
       </div>
-
-      {panelFor && (
-        <CrawlJobPanel
-          listing={panelFor}
-          groups={groups}
-          myConfigs={myConfigs}
-          prompts={prompts}
-          sellingAccounts={sellingAccounts}
-          apiKey={apiKey}
-          platform={platform}
-          onClose={() => setPanelFor(null)}
-          onCreated={() => handleCreated(panelFor.id)}
-        />
-      )}
     </Layout>
   )
 }

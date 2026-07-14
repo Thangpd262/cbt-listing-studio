@@ -9,14 +9,14 @@ import { uploadToStorage } from '../../lib/storage'
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'POST') return error(res, 405, 'Method not allowed')
 
-  const { listing_id, prompt_id, prompt, platform, provider } = req.body ?? {}
+  const { listing_id, prompt_id, prompt, platform, provider, model } = req.body ?? {}
   if (!listing_id) return error(res, 400, 'listing_id là bắt buộc')
 
   const supabase = createSupabaseClient()
 
   // Map a prompt's model to an image provider (fallback: dalle).
-  const modelToProvider = (model: string | null): ImageProvider =>
-    model === 'gemini-2.5-flash-image' ? 'imagen' : 'dalle'
+  const modelToProvider = (m: string | null): ImageProvider =>
+    m === 'gemini-2.5-flash-image' ? 'imagen' : 'dalle'
 
   // Resolve the prompt text (raw prompt wins; else load the template).
   // The template's model decides the provider unless a raw prompt is used.
@@ -36,12 +36,14 @@ export default withAuth(async (req, res, auth) => {
   if (!promptText) return error(res, 400, 'Cần prompt_id hoặc prompt')
 
   const plt = platform === 'walmart' ? 'walmart' : 'amazon'
-  // Prefer the template's model → provider; else the body param; else dalle.
-  const imgProvider: ImageProvider = templateModel
-    ? modelToProvider(templateModel)
-    : provider === 'imagen'
-      ? 'imagen'
-      : 'dalle'
+  // Precedence: explicit body model → template model → provider param → dalle.
+  const imgProvider: ImageProvider = model
+    ? modelToProvider(model)
+    : templateModel
+      ? modelToProvider(templateModel)
+      : provider === 'imagen'
+        ? 'imagen'
+        : 'dalle'
 
   try {
     const gen = await generateImage(promptText, imgProvider)
