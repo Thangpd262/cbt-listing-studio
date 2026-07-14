@@ -33,9 +33,9 @@ function toRow(j: AmzJob): Row {
   const fv = (j.payload?.field_values ?? {}) as Record<string, string>
   return {
     id: j.id,
-    sku: fv.item_name ? fv.item_name.slice(0, 24) : '—',
+    sku: j.sku ?? (fv.item_name ? fv.item_name.slice(0, 24) : '—'),
     action: j.action,
-    user: '—',
+    user: j.created_by_email ?? '—',
     status: j.status,
     time: timeAgo(j.created_at),
     retry_count: j.retry_count,

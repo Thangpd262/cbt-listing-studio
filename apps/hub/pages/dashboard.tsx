@@ -56,9 +56,9 @@ const SAMPLE_RECENT: RecentJob[] = [
 function jobToRecent(j: AmzJob): RecentJob {
   const fv = (j.payload?.field_values ?? {}) as Record<string, string>
   return {
-    sku: fv.item_name ? fv.item_name.slice(0, 20) : '—',
+    sku: j.sku ?? (fv.item_name ? fv.item_name.slice(0, 20) : '—'),
     action: j.action,
-    user: '—',
+    user: j.created_by_email ?? '—',
     status: j.status,
     time: timeAgo(j.created_at),
   }

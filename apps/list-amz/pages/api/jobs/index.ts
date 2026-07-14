@@ -1,6 +1,8 @@
 import { withAuth, createSupabaseClient, error, paginated } from '@cbt/shared'
 
 // GET — paginated list of listing jobs (filter by status / selling_account_id).
+// Embeds the linked product's SKU + title via the product_id FK so the UI can
+// show a real SKU instead of digging through the job payload.
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')
 
@@ -11,7 +13,7 @@ export default withAuth(async (req, res, auth) => {
 
   let query = supabase
     .from('amz_listing_jobs')
-    .select('*', { count: 'exact' })
+    .select('*, product:amz_products(sku, title)', { count: 'exact' })
     .eq('account_id', auth.account_id)
     .order('created_at', { ascending: false })
     .range(from, from + limit - 1)
@@ -20,5 +22,20 @@ export default withAuth(async (req, res, auth) => {
 
   const { data, error: dbError, count } = await query
   if (dbError) return error(res, 500, dbError.message)
-  return paginated(res, data, count ?? 0, page, limit)
+
+  // Flatten the embedded product onto the job + expose sku / created_by_email.
+  // created_by_email is null until amz_listing_jobs carries a creator column.
+  const rows = (data ?? []).map((row) => {
+    const { product, ...job } = row as typeof row & {
+      product: { sku: string; title: string } | null
+    }
+    return {
+      ...job,
+      sku: product?.sku ?? null,
+      product_title: product?.title ?? null,
+      created_by_email: null as string | null,
+    }
+  })
+
+  return paginated(res, rows, count ?? 0, page, limit)
 })

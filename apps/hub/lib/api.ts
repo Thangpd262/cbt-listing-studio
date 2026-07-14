@@ -229,6 +229,10 @@ export type AmzJob = {
   retry_count: number
   created_at: string
   updated_at: string
+  // Added by the jobs endpoint (product join); optional for backward-compat.
+  sku?: string | null
+  product_title?: string | null
+  created_by_email?: string | null
 }
 
 export const listAmzApi = {
