@@ -13,6 +13,12 @@ export function withAuth(
   handler: (req: NextApiRequest, res: NextApiResponse, auth: AuthContext) => Promise<void>
 ) {
   return async (req: NextApiRequest, res: NextApiResponse) => {
+    // Handle CORS preflight — must return 2xx before auth check.
+    if (req.method === 'OPTIONS') {
+      res.status(204).end()
+      return
+    }
+
     const apiKey = req.headers['x-api-key'] as string
 
     if (!apiKey) {
