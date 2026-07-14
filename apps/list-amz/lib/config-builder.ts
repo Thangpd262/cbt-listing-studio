@@ -142,12 +142,13 @@ export function buildOfferAttributes(
     ]
   }
 
+  // fulfillment_availability takes no marketplace_id, and the handling-time key
+  // is `handling_time` (not lead_time_to_ship_max_days).
   attrs['fulfillment_availability'] = [
     {
       fulfillment_channel_code: 'DEFAULT',
       quantity: isNaN(qty) ? 0 : qty,
-      ...(handling > 0 ? { lead_time_to_ship_max_days: handling } : {}),
-      marketplace_id: marketplaceId,
+      ...(handling > 0 ? { handling_time: handling } : {}),
     },
   ]
 

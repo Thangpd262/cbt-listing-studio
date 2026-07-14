@@ -13,7 +13,20 @@ export default withAuth(async (req: NextApiRequest, res: NextApiResponse, auth) 
       .eq('account_id', auth.account_id)
       .order('created_at', { ascending: false })
     if (dbErr) return error(res, 500, dbErr.message)
-    return ok(res, data)
+
+    // Attach product_type from the base config (based_on = product_configs.key).
+    // based_on is a plain text key (not a FK), so resolve it with one extra query.
+    const keys = [...new Set((data ?? []).map((r) => r.based_on).filter(Boolean))]
+    const typeByKey: Record<string, string> = {}
+    if (keys.length) {
+      const { data: bases } = await supabase
+        .from('product_configs')
+        .select('key, product_type')
+        .in('key', keys)
+      for (const b of bases ?? []) typeByKey[b.key] = b.product_type
+    }
+    const rows = (data ?? []).map((r) => ({ ...r, product_type: typeByKey[r.based_on] ?? null }))
+    return ok(res, rows)
   }
 
   if (req.method === 'POST') {

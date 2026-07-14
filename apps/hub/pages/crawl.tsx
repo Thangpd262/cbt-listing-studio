@@ -107,7 +107,13 @@ export default function CrawlPage() {
       ])
       setGroups(g.length ? g.map((x) => ({ id: x.id, name: x.name })) : SAMPLE_GROUPS)
       setMyConfigs(
-        c.map((x) => ({ id: x.id, name: x.name, from: x.based_on, imageUrls: overrideImages(x.overrides) }))
+        c.map((x) => ({
+          id: x.id,
+          name: x.name,
+          from: x.based_on,
+          productType: x.product_type,
+          imageUrls: overrideImages(x.overrides),
+        }))
       )
       const imagePrompts = p.filter((x) => x.prompt_type === 'image').map((x) => ({ id: x.id, name: x.name }))
       setPrompts(imagePrompts.length ? imagePrompts : SAMPLE_PROMPTS)

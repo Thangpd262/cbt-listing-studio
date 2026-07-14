@@ -439,6 +439,7 @@ export type UserConfig = {
   account_id: string
   name: string
   based_on: string // product_configs.key
+  product_type?: string | null // resolved from the base config
   overrides: Record<string, unknown>
   created_at: string
 }

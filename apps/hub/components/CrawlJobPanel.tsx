@@ -6,10 +6,25 @@ import { SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
 type GalleryImage = { id: string; url: string; ai?: boolean }
 
 export type PanelGroup = { id: string; name: string }
-export type PanelConfig = { id: string; name: string; from: string; imageUrls?: string[] }
+export type PanelConfig = { id: string; name: string; from: string; productType?: string | null; imageUrls?: string[] }
 export type PanelPrompt = { id: string; name: string }
 
 const AI_MODELS = ['gpt-image-1', 'gemini-2.5-flash-image']
+
+// SKU short-code by Amazon product_type. SKU = {SHORT}-{unix10}.
+const TYPE_SHORT: Record<string, string> = {
+  SHIRT: 'SHIR',
+  DRINKING_CUP: 'DRIN',
+  BLANKET: 'BLAN',
+  SWEATSHIRT: 'SWEA',
+  HAT: 'HAT',
+  CANDLE: 'CAND',
+}
+
+function shortCode(productType: string | null | undefined): string {
+  if (!productType) return 'ITEM'
+  return TYPE_SHORT[productType] ?? (productType.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase() || 'ITEM')
+}
 
 // Inline 3-column card: [listing meta] · [content + images] · [config + actions].
 // One card per crawled listing (rendered as a stack in the Crawl page).
@@ -45,8 +60,7 @@ export default function CrawlJobPanel({
   const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
-  // SKU + price are derived silently (no longer edited in this layout).
-  const sku = `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
+  // Price derived silently; SKU is generated fresh at job-creation time.
   const price = String(listing.price)
   // title autosave status + tags → search_term
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -167,6 +181,9 @@ export default function CrawlJobPanel({
 
   async function submit() {
     const configKey = resolveConfigKey(config)
+    // Generate the SKU now: {SHORT}-{unix10}, short-code from the config's product_type.
+    const selectedConfig = myConfigs.find((c) => c.id === config)
+    const sku = `${shortCode(selectedConfig?.productType)}-${Math.floor(Date.now() / 1000)}`
     const selectedUrls = images.filter((i) => selected.has(i.id)).map((i) => i.url)
     const effective = selectedUrls.length ? selectedUrls : configImages
     const mainUrl =
