@@ -4,7 +4,15 @@ import Layout from '../components/Layout'
 import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } from '../components/CrawlJobPanel'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform } from '../lib/platform-context'
-import { accountApi, crawlApi, generatorApi, productGroupApi, userConfigApi, type SellingAccount } from '../lib/api'
+import {
+  accountApi,
+  crawlApi,
+  generatorApi,
+  productGroupApi,
+  userConfigApi,
+  type SellingAccount,
+  type TeamMember,
+} from '../lib/api'
 import { GROUPS, MY_CONFIGS, SAMPLE_LISTINGS, type SampleListing } from '../lib/sample-data'
 
 const SAMPLE_GROUPS: PanelGroup[] = GROUPS.map((g) => ({ id: g.id, name: g.name }))
@@ -21,8 +29,9 @@ function overrideImages(overrides: Record<string, unknown>): string[] {
 }
 
 export default function CrawlPage() {
-  const { apiKey, token } = useAuth()
+  const { apiKey, token, user } = useAuth()
   const { platform } = usePlatform()
+  const isAdmin = user?.role === 'admin'
 
   const [listings, setListings] = useState<SampleListing[]>(SAMPLE_LISTINGS)
   const [loading, setLoading] = useState(false)
@@ -33,6 +42,9 @@ export default function CrawlPage() {
   const [myConfigs, setMyConfigs] = useState<PanelConfig[]>(SAMPLE_CONFIGS)
   const [prompts, setPrompts] = useState<PanelPrompt[]>(SAMPLE_PROMPTS)
   const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
+
+  const [teamUsers, setTeamUsers] = useState<TeamMember[]>([])
+  const [userFilter, setUserFilter] = useState('') // admin only; '' = all users
 
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
@@ -46,7 +58,11 @@ export default function CrawlPage() {
     }
     setLoading(true)
     try {
-      const res = await crawlApi.getListings(apiKey, { limit: 48, platform: 'etsy' })
+      const res = await crawlApi.getListings(apiKey, {
+        limit: 48,
+        platform: 'etsy',
+        user_id: isAdmin && userFilter ? userFilter : undefined,
+      })
       if (res.data.length) {
         setListings(
           res.data.map((l) => ({
@@ -57,6 +73,7 @@ export default function CrawlPage() {
             price: l.price ?? 0,
             hasJob: false,
             images: l.images ?? [],
+            email: l.created_by_email ?? undefined,
             createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
           }))
         )
@@ -71,7 +88,7 @@ export default function CrawlPage() {
     } finally {
       setLoading(false)
     }
-  }, [apiKey])
+  }, [apiKey, isAdmin, userFilter])
 
   const loadMeta = useCallback(async () => {
     if (!apiKey) {
@@ -97,7 +114,8 @@ export default function CrawlPage() {
       setMyConfigs(SAMPLE_CONFIGS)
       setPrompts(SAMPLE_PROMPTS)
     }
-    // Selling accounts (for real job creation) use the bearer token.
+    // Selling accounts (for real job creation) + team list (admin filter) use
+    // the bearer token.
     if (token) {
       try {
         const accts = await accountApi.getSellingAccounts(token)
@@ -105,10 +123,17 @@ export default function CrawlPage() {
       } catch {
         setSellingAccounts([])
       }
+      if (isAdmin) {
+        try {
+          setTeamUsers(await accountApi.getTeam(token))
+        } catch {
+          setTeamUsers([])
+        }
+      }
     } else {
       setSellingAccounts([])
     }
-  }, [apiKey, platform, token])
+  }, [apiKey, platform, token, isAdmin])
 
   useEffect(() => {
     loadListings()
@@ -159,6 +184,21 @@ export default function CrawlPage() {
     <Layout title="Etsy Crawl">
       {/* Filter bar */}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        {isAdmin && (
+          <select
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+            className="field"
+            title="Lọc theo người crawl (admin)"
+          >
+            <option value="">Tất cả user</option>
+            {teamUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.email}
+              </option>
+            ))}
+          </select>
+        )}
         <select value={group} onChange={(e) => setGroup(e.target.value)} className="field">
           <option value="">Tất cả nhóm</option>
           {groups.map((g) => (

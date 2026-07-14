@@ -50,6 +50,7 @@ export type SampleListing = {
   images: string[]
   // Left-column metadata (optional — absent for real rows that lack it).
   username?: string
+  email?: string
   etsyId?: string
   createdAt?: string
 }
@@ -66,6 +67,7 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     hasJob: false,
     images: [img('case1'), img('case2'), img('case3'), img('case4'), img('case5'), img('case6')],
     username: 'vnam0142004',
+    email: 'nam@iart.group',
     etsyId: '1792611842',
     createdAt: '2026-07-14',
   },
@@ -90,6 +92,7 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     hasJob: false,
     images: [],
     username: 'vthang0091',
+    email: 'thang@iart.group',
     etsyId: '1843647245',
     createdAt: '2026-07-13',
   },

@@ -12,7 +12,7 @@ export default withAuth(async (req, res, auth) => {
 
     let query = supabase
       .from('crawl_listings')
-      .select('*', { count: 'exact' })
+      .select('*, creator:app_users!created_by(email)', { count: 'exact' })
       .eq('account_id', auth.account_id)
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1)
@@ -20,9 +20,23 @@ export default withAuth(async (req, res, auth) => {
     if (req.query.platform) query = query.eq('platform', req.query.platform as string)
     if (req.query.status) query = query.eq('status', req.query.status as string)
 
+    // Access control: non-admins only see what they crawled. Admins see all,
+    // and may filter to a specific user via ?user_id=.
+    if (auth.role !== 'admin') {
+      query = query.eq('created_by', auth.user_id)
+    } else if (req.query.user_id) {
+      query = query.eq('created_by', req.query.user_id as string)
+    }
+
     const { data, error: dbError, count } = await query
     if (dbError) return error(res, 500, dbError.message)
-    return paginated(res, data, count ?? 0, page, limit)
+
+    // Flatten the embedded creator email onto each row.
+    const rows = (data ?? []).map((row) => {
+      const { creator, ...listing } = row as typeof row & { creator: { email: string } | null }
+      return { ...listing, created_by_email: creator?.email ?? null }
+    })
+    return paginated(res, rows, count ?? 0, page, limit)
   }
 
   if (req.method === 'POST') {
@@ -46,6 +60,7 @@ export default withAuth(async (req, res, auth) => {
         tags: Array.isArray(tags) ? tags : [],
         raw_html: raw_html ?? null,
         status: 'ingested',
+        created_by: auth.user_id,
       })
       .select('id')
       .single()

@@ -5,7 +5,7 @@ import { createSupabaseClient, created, error } from '@cbt/shared'
 // Called by the Chrome extension with x-crawl-token = CBT API key.
 // Accepts Etsy OR AliExpress payload (auto-detected by payload shape).
 
-async function resolveAccount(token: string): Promise<{ account_id: string } | null> {
+async function resolveAccount(token: string): Promise<{ account_id: string; user_id?: string } | null> {
   const accountUrl = process.env.ACCOUNT_SERVICE_URL
   if (!accountUrl || !token) return null
   try {
@@ -80,6 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       tags: Array.isArray(tags) ? tags.slice(0, 20) : [],
       crawl_purpose: crawl_purpose === 'tm' ? 'tm' : 'normal',
       status: 'ingested',
+      created_by: auth.user_id ?? null,
     })
     .select('id')
     .single()

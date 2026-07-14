@@ -45,13 +45,12 @@ export default function CrawlJobPanel({
   const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
-  // (a) editable SKU + price
-  const [sku, setSku] = useState(
-    () => `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
-  )
-  const [price, setPrice] = useState(String(listing.price))
-  // (b) title autosave status
+  // SKU + price are derived silently (no longer edited in this layout).
+  const sku = `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
+  const price = String(listing.price)
+  // title autosave status + tags → search_term
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [tags, setTags] = useState('')
   const [config, setConfig] = useState('')
   const [aiDescription, setAiDescription] = useState(false)
   const [promptId, setPromptId] = useState('')
@@ -180,12 +179,19 @@ export default function CrawlJobPanel({
     if (platform === 'amazon' && apiKey && sellingAccountId && configKey) {
       setSubmitting(true)
       try {
+        const searchTerms = tags.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).join('\n')
         const r = await listAmzApi.createListing(apiKey, {
           selling_account_id: sellingAccountId,
           sku,
           config_key: configKey,
           ai_description: aiDescription,
-          field_values: { item_name: title, price, img: mainUrl, images: extraUrls.join('\n') },
+          field_values: {
+            item_name: title,
+            price,
+            img: mainUrl,
+            images: extraUrls.join('\n'),
+            search_terms: searchTerms,
+          },
         })
         if (r.status === 'failed') alert(`Job đã tạo nhưng chạy lỗi: ${r.error ?? 'unknown'}`)
         onCreated()
@@ -205,36 +211,47 @@ export default function CrawlJobPanel({
     const isSel = selected.has(img.id)
     const isRef = refImageId === img.id
     return (
-      <div className="relative h-[76px] w-[76px] flex-shrink-0">
+      <div className="relative h-24 w-24 flex-shrink-0">
         <img
           src={img.url}
           alt=""
-          className={`h-[76px] w-[76px] rounded-md border-2 object-cover ${
+          className={`h-24 w-24 rounded-md border-2 object-cover ${
             isMain ? 'border-brand' : isSel ? 'border-line' : 'border-transparent opacity-50'
           } ${isRef ? 'ring-2 ring-purple-400' : ''}`}
         />
+        {/* status badge (top-left) */}
+        {isMain ? (
+          <span className="absolute left-1 top-1 rounded bg-brand px-1 text-[9px] font-medium text-white">main</span>
+        ) : isRef ? (
+          <span className="absolute left-1 top-1 rounded bg-purple-500 px-1 text-[9px] font-medium text-white">
+            Tham chiếu AI
+          </span>
+        ) : null}
+        {/* delete (top-right) */}
+        <button
+          onClick={() => delImg(img.id)}
+          title="Xoá ảnh"
+          className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[12px] leading-none text-danger"
+        >
+          ×
+        </button>
+        {/* select checkbox (bottom-left) */}
         <input
           type="checkbox"
           checked={isSel}
           onChange={() => toggleSelected(img.id)}
           title="Chọn ảnh gửi vào job"
-          className="absolute left-1 top-1 h-3.5 w-3.5 cursor-pointer accent-brand"
+          className="absolute bottom-1 left-1 h-4 w-4 cursor-pointer accent-brand"
         />
-        <button
-          onClick={() => delImg(img.id)}
-          title="Xoá ảnh"
-          className="absolute right-0.5 top-0.5 rounded bg-black/65 px-1 text-[11px] leading-none text-danger"
-        >
-          ×
-        </button>
-        <div className="absolute bottom-0.5 right-0.5 flex gap-0.5">
+        {/* action cluster (bottom-right) */}
+        <div className="absolute bottom-1 right-1 flex gap-0.5">
           {canRef && (
             <button
               onClick={() => setRefImageId(isRef ? null : img.id)}
               title="Dùng ảnh này làm tham chiếu cho AI gen"
               className={`rounded bg-black/65 px-1 leading-none ${isRef ? 'text-purple-300' : 'text-muted'}`}
             >
-              <Crosshair size={11} />
+              <Crosshair size={12} />
             </button>
           )}
           {canRegen && (
@@ -244,26 +261,17 @@ export default function CrawlJobPanel({
               title="Gen lại ảnh này"
               className="rounded bg-black/65 px-1 leading-none text-brand"
             >
-              {regenId === img.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCw size={11} />}
+              {regenId === img.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
             </button>
           )}
           <button
             onClick={() => setMainId(img.id)}
             title="Đặt làm ảnh main"
-            className={`rounded bg-black/65 px-1 text-[13px] leading-none ${isMain ? 'text-brand' : 'text-warn'}`}
+            className={`rounded bg-black/65 px-1 text-[14px] leading-none ${isMain ? 'text-brand' : 'text-warn'}`}
           >
             ★
           </button>
         </div>
-        {isMain ? (
-          <div className="absolute inset-x-0 bottom-0 rounded-b bg-brand-soft py-px text-center text-[9px] text-brand">
-            main
-          </div>
-        ) : isRef ? (
-          <div className="absolute inset-x-0 bottom-0 rounded-b bg-purple-500/20 py-px text-center text-[9px] text-purple-300">
-            Tham chiếu AI
-          </div>
-        ) : null}
       </div>
     )
   }
@@ -279,6 +287,11 @@ export default function CrawlJobPanel({
           </span>
           <span className="truncate text-muted">{listing.username ?? '—'}</span>
         </div>
+        {listing.email && (
+          <div className="truncate text-[11px] text-brand" title={listing.email}>
+            {listing.email}
+          </div>
+        )}
         <div className="font-medium text-fg">{listing.shop}</div>
         {listing.etsyId && <div className="font-mono text-[11px] text-muted">{listing.etsyId}</div>}
         <span className={`badge w-fit ${listing.hasJob ? 'b-ok' : 'b-mu'}`}>
@@ -289,15 +302,18 @@ export default function CrawlJobPanel({
 
       {/* ── Middle: title + images ── */}
       <div className="min-w-0">
-        <div className="mb-1 text-[11px] text-muted">Tiêu đề sản phẩm</div>
-        <textarea
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="field min-h-[64px] w-full resize-y"
-        />
-        <div className="mb-3 mt-1 text-[10px] text-muted">
-          {title.length} ký tự ·{' '}
-          {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
+        {/* Title — its own full-width block, separate from images */}
+        <div className="mb-3 rounded-lg border border-line bg-panel2/40 p-2.5">
+          <div className="mb-1 text-[11px] text-muted">Tiêu đề sản phẩm</div>
+          <textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="field min-h-[64px] w-full resize-y"
+          />
+          <div className="mt-1 text-[10px] text-muted">
+            {title.length} ký tự ·{' '}
+            {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
+          </div>
         </div>
 
         {/* Etsy images (all, no limit) */}
@@ -352,6 +368,17 @@ export default function CrawlJobPanel({
           </button>
         </div>
 
+        {/* Tags → mapped to search_term on the job */}
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] font-medium text-fg">Tags / Search term</div>
+          <textarea
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="mỗi tag 1 dòng, hoặc cách nhau bằng dấu phẩy"
+            className="field min-h-[44px] w-full resize-y"
+          />
+        </div>
+
         {/* config default images (read-only) */}
         <div className="mb-1 text-[11px] font-medium text-fg">
           Ảnh mặc định (config) <span className="text-muted">({configImages.length})</span>
@@ -395,18 +422,6 @@ export default function CrawlJobPanel({
                   </option>
                 ))}
           </select>
-        </div>
-
-        {/* (a) editable SKU + price */}
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <div className="mb-1 text-[11px] text-muted">SKU</div>
-            <input value={sku} onChange={(e) => setSku(e.target.value)} className="field w-full" />
-          </div>
-          <div>
-            <div className="mb-1 text-[11px] text-muted">Giá (USD)</div>
-            <input value={price} onChange={(e) => setPrice(e.target.value)} className="field w-full" />
-          </div>
         </div>
 
         <label className="flex cursor-pointer items-start gap-2">
