@@ -9,7 +9,7 @@ export default withAuth(async (req, res, auth) => {
 
   const { data, error: dbError } = await supabase
     .from('gen_assets')
-    .select('id, job_id, asset_type, storage_path, content, variant_id, platform, created_at')
+    .select('id, job_id, asset_type, storage_path, content, variant_id, platform, created_at, expires_at')
     .eq('account_id', auth.account_id)
     .eq('listing_id', listingId)
     .order('created_at', { ascending: false })

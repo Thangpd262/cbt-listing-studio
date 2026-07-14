@@ -17,7 +17,7 @@ export default withAuth(async (req, res, auth) => {
 
   const { data: assets } = await supabase
     .from('gen_assets')
-    .select('id, asset_type, storage_path, content, variant_id, platform')
+    .select('id, asset_type, storage_path, content, variant_id, platform, expires_at')
     .eq('job_id', jobId)
 
   return ok(res, { job_id: job.id, ...job, assets: assets ?? [] })
