@@ -219,11 +219,19 @@ export default function CrawlJobPanel({
             isMain ? 'border-brand' : isSel ? 'border-line' : 'border-transparent opacity-50'
           } ${isRef ? 'ring-2 ring-purple-400' : ''}`}
         />
-        {/* status badge (top-left) */}
+        {/* select checkbox (top-left corner) */}
+        <input
+          type="checkbox"
+          checked={isSel}
+          onChange={() => toggleSelected(img.id)}
+          title="Chọn ảnh gửi vào job"
+          className="absolute left-1 top-1 h-4 w-4 cursor-pointer accent-brand"
+        />
+        {/* status badge (top-left, next to the checkbox) */}
         {isMain ? (
-          <span className="absolute left-1 top-1 rounded bg-brand px-1 text-[9px] font-medium text-white">main</span>
+          <span className="absolute left-6 top-1 rounded bg-brand px-1 text-[9px] font-medium text-white">main</span>
         ) : isRef ? (
-          <span className="absolute left-1 top-1 rounded bg-purple-500 px-1 text-[9px] font-medium text-white">
+          <span className="absolute left-6 top-1 rounded bg-purple-500 px-1 text-[9px] font-medium text-white">
             Tham chiếu AI
           </span>
         ) : null}
@@ -235,25 +243,20 @@ export default function CrawlJobPanel({
         >
           ×
         </button>
-        {/* select checkbox (bottom-left) */}
-        <input
-          type="checkbox"
-          checked={isSel}
-          onChange={() => toggleSelected(img.id)}
-          title="Chọn ảnh gửi vào job"
-          className="absolute bottom-1 left-1 h-4 w-4 cursor-pointer accent-brand"
-        />
-        {/* action cluster (bottom-right) */}
+        {/* reference toggle ⌖ (bottom-left) */}
+        {canRef && (
+          <button
+            onClick={() => setRefImageId(isRef ? null : img.id)}
+            title="Dùng ảnh này làm tham chiếu cho AI gen"
+            className={`absolute bottom-1 left-1 rounded bg-black/65 px-1 leading-none ${
+              isRef ? 'text-purple-300' : 'text-muted'
+            }`}
+          >
+            <Crosshair size={12} />
+          </button>
+        )}
+        {/* regen (AI) + main ★ (bottom-right) */}
         <div className="absolute bottom-1 right-1 flex gap-0.5">
-          {canRef && (
-            <button
-              onClick={() => setRefImageId(isRef ? null : img.id)}
-              title="Dùng ảnh này làm tham chiếu cho AI gen"
-              className={`rounded bg-black/65 px-1 leading-none ${isRef ? 'text-purple-300' : 'text-muted'}`}
-            >
-              <Crosshair size={12} />
-            </button>
-          )}
           {canRegen && (
             <button
               onClick={() => regen(img.id)}
