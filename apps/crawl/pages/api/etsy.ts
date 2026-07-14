@@ -21,6 +21,17 @@ async function resolveAccount(token: string): Promise<{ account_id: string } | n
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // CORS: the browser extension calls this cross-origin from etsy.com /
+  // aliexpress.com. The x-crawl-token header forces a preflight, and this
+  // route doesn't use withAuth — so set the headers + answer OPTIONS here.
+  const origin = (req.headers.origin as string) || '*'
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Vary', 'Origin')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-crawl-token, X-API-Key')
+  res.setHeader('Access-Control-Max-Age', '86400')
+  if (req.method === 'OPTIONS') return res.status(204).end()
+
   if (req.method !== 'POST') return error(res, 405, 'Method not allowed')
 
   const action = req.query.action as string
