@@ -14,22 +14,34 @@ export default withAuth(async (req, res, auth) => {
 
   const supabase = createSupabaseClient()
 
+  // Map a prompt's model to an image provider (fallback: dalle).
+  const modelToProvider = (model: string | null): ImageProvider =>
+    model === 'gemini-2.5-flash-image' ? 'imagen' : 'dalle'
+
   // Resolve the prompt text (raw prompt wins; else load the template).
+  // The template's model decides the provider unless a raw prompt is used.
   let promptText = typeof prompt === 'string' ? prompt.trim() : ''
+  let templateModel: string | null = null
   if (!promptText && prompt_id) {
     const { data: tpl } = await supabase
       .from('prompt_templates')
-      .select('content')
+      .select('content, model')
       .eq('id', prompt_id)
       .eq('account_id', auth.account_id)
       .single()
     if (!tpl) return error(res, 404, 'Prompt template không tồn tại')
     promptText = tpl.content
+    templateModel = tpl.model ?? null
   }
   if (!promptText) return error(res, 400, 'Cần prompt_id hoặc prompt')
 
   const plt = platform === 'walmart' ? 'walmart' : 'amazon'
-  const imgProvider: ImageProvider = provider === 'imagen' ? 'imagen' : 'dalle'
+  // Prefer the template's model → provider; else the body param; else dalle.
+  const imgProvider: ImageProvider = templateModel
+    ? modelToProvider(templateModel)
+    : provider === 'imagen'
+      ? 'imagen'
+      : 'dalle'
 
   try {
     const gen = await generateImage(promptText, imgProvider)
