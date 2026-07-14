@@ -4,14 +4,14 @@ import Layout from '../components/Layout'
 import CrawlJobPanel, { type PanelGroup, type PanelConfig } from '../components/CrawlJobPanel'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform } from '../lib/platform-context'
-import { crawlApi, productGroupApi, userConfigApi } from '../lib/api'
+import { accountApi, crawlApi, productGroupApi, userConfigApi, type SellingAccount } from '../lib/api'
 import { GROUPS, MY_CONFIGS, SAMPLE_LISTINGS, type SampleListing } from '../lib/sample-data'
 
 const SAMPLE_GROUPS: PanelGroup[] = GROUPS.map((g) => ({ id: g.id, name: g.name }))
 const SAMPLE_CONFIGS: PanelConfig[] = MY_CONFIGS.map((c) => ({ id: c.id, name: c.name, from: c.from }))
 
 export default function CrawlPage() {
-  const { apiKey } = useAuth()
+  const { apiKey, token } = useAuth()
   const { platform } = usePlatform()
 
   const [listings, setListings] = useState<SampleListing[]>(SAMPLE_LISTINGS)
@@ -21,6 +21,7 @@ export default function CrawlPage() {
   // Groups + user configs feed the filter bar and the job panel.
   const [groups, setGroups] = useState<PanelGroup[]>(SAMPLE_GROUPS)
   const [myConfigs, setMyConfigs] = useState<PanelConfig[]>(SAMPLE_CONFIGS)
+  const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
 
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
@@ -78,7 +79,18 @@ export default function CrawlPage() {
       setGroups(SAMPLE_GROUPS)
       setMyConfigs(SAMPLE_CONFIGS)
     }
-  }, [apiKey, platform])
+    // Selling accounts (for real job creation) use the bearer token.
+    if (token) {
+      try {
+        const accts = await accountApi.getSellingAccounts(token)
+        setSellingAccounts(accts.filter((a) => a.platform === platform && a.is_active))
+      } catch {
+        setSellingAccounts([])
+      }
+    } else {
+      setSellingAccounts([])
+    }
+  }, [apiKey, platform, token])
 
   useEffect(() => {
     loadListings()
@@ -108,12 +120,9 @@ export default function CrawlPage() {
     }
   }
 
-  function handleCreate(sku: string) {
-    if (panelFor) {
-      setListings((ls) => ls.map((l) => (l.id === panelFor.id ? { ...l, hasJob: true } : l)))
-    }
+  function handleCreated(id: string) {
+    setListings((ls) => ls.map((l) => (l.id === id ? { ...l, hasJob: true } : l)))
     setPanelFor(null)
-    alert(`Đã tạo job cho SKU ${sku} → gửi sang Jobs queue (chờ chạy).`)
   }
 
   return (
@@ -209,8 +218,11 @@ export default function CrawlPage() {
           listing={panelFor}
           groups={groups}
           myConfigs={myConfigs}
+          sellingAccounts={sellingAccounts}
+          apiKey={apiKey}
+          platform={platform}
           onClose={() => setPanelFor(null)}
-          onCreate={handleCreate}
+          onCreated={() => handleCreated(panelFor.id)}
         />
       )}
     </Layout>

@@ -208,10 +208,57 @@ export const generatorApi = {
   },
 }
 
+// Unwrap the paginated { success, data, meta } envelope used by list services.
+async function unwrapPaginated<T>(res: Response): Promise<{ data: T[]; total: number }> {
+  const body = (await res.json().catch(() => null)) as
+    | { success: boolean; data: T[]; meta?: { total: number }; error?: string }
+    | null
+  if (!res.ok || !body?.success) throw new Error(body?.error ?? `Request failed (${res.status})`)
+  return { data: body.data ?? [], total: body.meta?.total ?? body.data?.length ?? 0 }
+}
+
+export type AmzJob = {
+  id: string
+  selling_account_id: string
+  product_id: string | null
+  action: 'create' | 'update' | 'delete' | 'price_qty'
+  status: 'pending' | 'processing' | 'success' | 'failed'
+  payload: Record<string, unknown>
+  result: unknown
+  error: string | null
+  retry_count: number
+  created_at: string
+  updated_at: string
+}
+
 export const listAmzApi = {
   async getProducts(apiKey: string) {
     const res = await fetch(`${LIST_AMZ_URL}/api/products`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<Array<Record<string, unknown>>>(res)
+  },
+  async getJobs(apiKey: string, params: { status?: string; page?: number; limit?: number } = {}) {
+    const q = new URLSearchParams()
+    if (params.status) q.set('status', params.status)
+    if (params.page) q.set('page', String(params.page))
+    if (params.limit) q.set('limit', String(params.limit))
+    const res = await fetch(`${LIST_AMZ_URL}/api/jobs?${q}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrapPaginated<AmzJob>(res)
+  },
+  async retryJob(apiKey: string, id: string) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/jobs/${id}/retry`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<{ job_id: string; status: string; error?: string }>(res)
+  },
+  // Config mode: { selling_account_id, sku, config_key, field_values }
+  async createListing(apiKey: string, body: Record<string, unknown>) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/listings`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<{ product_id: string; job_id: string; status: string; error?: string }>(res)
   },
 }
 

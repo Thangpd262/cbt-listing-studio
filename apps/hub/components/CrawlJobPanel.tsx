@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { X, Sparkles, Zap } from 'lucide-react'
+import { X, Sparkles, Zap, Loader2 } from 'lucide-react'
+import { listAmzApi, type SellingAccount } from '../lib/api'
 import { SYSTEM_CONFIGS, SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
 
 type GalleryImage = { id: string; url: string; ai?: boolean }
@@ -9,18 +10,25 @@ export type PanelConfig = { id: string; name: string; from: string }
 
 // Slide-in panel for turning a crawled listing into an Amazon/Walmart job.
 // Flow: sửa title → thêm/bớt ảnh → chọn ảnh main (★) → chọn config → tạo job.
+// Amazon: real create via list-amz (config_key + field_values). Otherwise mock.
 export default function CrawlJobPanel({
   listing,
   groups,
   myConfigs,
+  sellingAccounts,
+  apiKey,
+  platform,
   onClose,
-  onCreate,
+  onCreated,
 }: {
   listing: SampleListing
   groups: PanelGroup[]
   myConfigs: PanelConfig[]
+  sellingAccounts: SellingAccount[]
+  apiKey: string | null
+  platform: 'amazon' | 'walmart'
   onClose: () => void
-  onCreate: (sku: string) => void
+  onCreated: () => void
 }) {
   const [title, setTitle] = useState(listing.title)
   const [images, setImages] = useState<GalleryImage[]>(() => [
@@ -34,9 +42,56 @@ export default function CrawlJobPanel({
   const [price, setPrice] = useState(String(listing.price))
   const [config, setConfig] = useState('')
   const [group, setGroup] = useState(listing.group)
+  const [sellingAccount, setSellingAccount] = useState(sellingAccounts[0]?.id ?? '')
+  const [submitting, setSubmitting] = useState(false)
 
   const etsyImages = useMemo(() => images.filter((i) => !i.ai), [images])
   const aiImages = useMemo(() => images.filter((i) => i.ai), [images])
+
+  // The config select value is either a "my config" id or a system key.
+  // Resolve both to the underlying product_configs key list-amz expects.
+  function resolveConfigKey(sel: string): string | null {
+    const mine = myConfigs.find((c) => c.id === sel)
+    if (mine) return mine.from
+    return SYSTEM_CONFIGS.some((s) => s.key === sel) ? sel : null
+  }
+
+  async function submit() {
+    const configKey = resolveConfigKey(config)
+    const mainUrl = images.find((i) => i.id === mainId)?.url ?? images[0]?.url ?? ''
+    const extraUrls = images.filter((i) => i.url !== mainUrl).map((i) => i.url)
+
+    // Real Amazon create when we have an API key + selling account + config.
+    if (platform === 'amazon' && apiKey && sellingAccount && configKey) {
+      setSubmitting(true)
+      try {
+        const r = await listAmzApi.createListing(apiKey, {
+          selling_account_id: sellingAccount,
+          sku,
+          config_key: configKey,
+          field_values: {
+            item_name: title,
+            price,
+            img: mainUrl,
+            images: extraUrls.join('\n'),
+          },
+        })
+        if (r.status === 'failed') {
+          alert(`Job đã tạo nhưng chạy lỗi: ${r.error ?? 'unknown'}`)
+        }
+        onCreated()
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Tạo job thất bại')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
+    // Fallback (Walmart, or no API/selling account) — mock the queue push.
+    alert(`Đã tạo job cho SKU ${sku} → Jobs queue (demo — chưa nối service).`)
+    onCreated()
+  }
 
   function delImg(id: string) {
     setImages((imgs) => imgs.filter((i) => i.id !== id))
@@ -169,6 +224,29 @@ export default function CrawlJobPanel({
           </div>
         </div>
 
+        {platform === 'amazon' && (
+          <div>
+            <div className="mb-1 text-[11px] text-muted">Selling account</div>
+            {sellingAccounts.length ? (
+              <select
+                value={sellingAccount}
+                onChange={(e) => setSellingAccount(e.target.value)}
+                className="field w-full"
+              >
+                {sellingAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.region})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-[11px] text-muted">
+                Chưa có selling account Amazon — job sẽ chạy ở chế độ demo.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <div>
             <div className="mb-1 text-[11px] text-muted">SKU</div>
@@ -185,8 +263,8 @@ export default function CrawlJobPanel({
           <button onClick={onClose} className="btn">
             Huỷ
           </button>
-          <button onClick={() => onCreate(sku)} className="btn btn-acc" disabled={!config}>
-            <Zap size={13} /> Tạo job → Jobs queue
+          <button onClick={submit} className="btn btn-acc" disabled={!config || submitting}>
+            {submitting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />} Tạo job → Jobs queue
           </button>
         </div>
       </div>

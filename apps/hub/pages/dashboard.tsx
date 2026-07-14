@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Users, TrendingUp, Clock, RefreshCw, Activity } from 'lucide-react'
 import Layout from '../components/Layout'
 import { BarChart, LineChart, type LineSeries } from '../components/Charts'
+import { useAuth } from '../lib/auth-context'
+import { listAmzApi, type AmzJob } from '../lib/api'
+import { timeAgo } from '../lib/format'
 
-// Sample data — swapped for the stats API once the backend ships.
-const STATS = [
-  { n: '1,248', l: 'Jobs tháng này', d: '+12% so tháng trước', tone: 'up' as const },
-  { n: '94%', l: 'Tỷ lệ thành công', d: '+2%', tone: 'up' as const },
-  { n: '6', l: 'Nhân viên hoạt động', d: 'không đổi', tone: 'flat' as const },
-  { n: '3', l: 'Job đang lỗi', d: 'cần xử lý', tone: 'down' as const },
+type Stat = { n: string; l: string; d: string; tone: 'up' | 'down' | 'flat' }
+
+// Sample stats — used until list-amz jobs are reachable.
+const SAMPLE_STATS: Stat[] = [
+  { n: '1,248', l: 'Jobs tháng này', d: '+12% so tháng trước', tone: 'up' },
+  { n: '94%', l: 'Tỷ lệ thành công', d: '+2%', tone: 'up' },
+  { n: '6', l: 'Nhân viên hoạt động', d: 'không đổi', tone: 'flat' },
+  { n: '3', l: 'Job đang lỗi', d: 'cần xử lý', tone: 'down' },
 ]
+
+type RecentJob = { sku: string; action: string; user: string; status: string; time: string }
 
 // Jobs per employee, per period.
 const JOBS_BY_PERIOD: Record<string, { label: string; value: number }[]> = {
@@ -38,13 +45,38 @@ const GROWTH: { labels: string[]; series: LineSeries[] } = {
   ],
 }
 
-const RECENT_JOBS = [
+const SAMPLE_RECENT: RecentJob[] = [
   { sku: 'FLORAL-001', action: 'create', user: 'Thang', status: 'success', time: '2 phút trước' },
   { sku: 'SHIRT-042', action: 'price_qty', user: 'Linh', status: 'success', time: '8 phút trước' },
   { sku: 'MUG-007', action: 'create', user: 'Nam', status: 'failed', time: '15 phút trước' },
   { sku: 'HAT-019', action: 'update', user: 'Thang', status: 'processing', time: '22 phút trước' },
   { sku: 'CANDLE-003', action: 'create', user: 'Mai', status: 'success', time: '35 phút trước' },
 ]
+
+function jobToRecent(j: AmzJob): RecentJob {
+  const fv = (j.payload?.field_values ?? {}) as Record<string, string>
+  return {
+    sku: fv.item_name ? fv.item_name.slice(0, 20) : '—',
+    action: j.action,
+    user: '—',
+    status: j.status,
+    time: timeAgo(j.created_at),
+  }
+}
+
+// Build the stat cards from a fetched job page (total from meta).
+function statsFromJobs(jobs: AmzJob[], total: number): Stat[] {
+  const done = jobs.filter((j) => j.status === 'success' || j.status === 'failed')
+  const success = done.filter((j) => j.status === 'success').length
+  const failed = jobs.filter((j) => j.status === 'failed').length
+  const rate = done.length ? Math.round((success / done.length) * 100) : 0
+  return [
+    { n: String(total), l: 'Tổng jobs', d: `${jobs.length} gần nhất`, tone: 'up' },
+    { n: `${rate}%`, l: 'Tỷ lệ thành công', d: `${success}/${done.length}`, tone: rate >= 90 ? 'up' : 'down' },
+    { n: String(SAMPLE_STATS[2].n), l: 'Nhân viên hoạt động', d: 'không đổi', tone: 'flat' },
+    { n: String(failed), l: 'Job đang lỗi', d: failed ? 'cần xử lý' : 'ổn định', tone: failed ? 'down' : 'up' },
+  ]
+}
 
 const STATUS_BADGE: Record<string, string> = {
   success: 'b-ok',
@@ -66,14 +98,42 @@ const PERIODS: { key: string; label: string }[] = [
 ]
 
 export default function DashboardPage() {
+  const { apiKey } = useAuth()
   const [period, setPeriod] = useState('7d')
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? ''
+
+  const [stats, setStats] = useState<Stat[]>(SAMPLE_STATS)
+  const [recent, setRecent] = useState<RecentJob[]>(SAMPLE_RECENT)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!apiKey) {
+      setStats(SAMPLE_STATS)
+      setRecent(SAMPLE_RECENT)
+      return
+    }
+    setLoading(true)
+    try {
+      const { data, total } = await listAmzApi.getJobs(apiKey, { limit: 50 })
+      setStats(statsFromJobs(data, total))
+      setRecent(data.slice(0, 8).map(jobToRecent))
+    } catch {
+      setStats(SAMPLE_STATS)
+      setRecent(SAMPLE_RECENT)
+    } finally {
+      setLoading(false)
+    }
+  }, [apiKey])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   return (
     <Layout title="Dashboard">
       {/* Stat cards */}
       <div className="mb-2.5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {STATS.map((s) => (
+        {stats.map((s) => (
           <div key={s.l} className="rounded-[10px] border border-line bg-panel px-3 py-2.5">
             <div className="text-xl font-medium text-fg">{s.n}</div>
             <div className="mt-0.5 text-[11px] text-muted">{s.l}</div>
@@ -120,8 +180,8 @@ export default function DashboardPage() {
       <div className="card mt-2.5">
         <div className="card-title">
           <Clock size={14} /> Job gần đây
-          <button className="ml-auto text-brand" title="Tải lại">
-            <RefreshCw size={13} />
+          <button onClick={load} className="ml-auto text-brand" title="Tải lại">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
         <table className="w-full text-xs">
@@ -135,8 +195,8 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {RECENT_JOBS.map((j) => (
-              <tr key={j.sku} className="hover:bg-panel2">
+            {recent.map((j, i) => (
+              <tr key={`${j.sku}-${i}`} className="hover:bg-panel2">
                 <td className="border-b border-line px-2 py-1.5">{j.sku}</td>
                 <td className="border-b border-line px-2 py-1.5">{j.action}</td>
                 <td className="border-b border-line px-2 py-1.5">{j.user}</td>
