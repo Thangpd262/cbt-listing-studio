@@ -12,13 +12,13 @@ export default function StatsCard({
   hint?: string
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="card p-5">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500">{label}</span>
-        {Icon && <Icon size={18} className="text-gray-400" />}
+        <span className="text-sm font-medium text-muted">{label}</span>
+        {Icon && <Icon size={18} className="text-muted" />}
       </div>
-      <div className="mt-2 text-3xl font-semibold">{value}</div>
-      {hint && <div className="mt-1 text-xs text-gray-400">{hint}</div>}
+      <div className="mt-2 text-3xl font-semibold text-fg">{value}</div>
+      {hint && <div className="mt-1 text-xs text-muted/70">{hint}</div>}
     </div>
   )
 }

@@ -1,327 +1,217 @@
-import { useEffect, useState, useCallback } from 'react'
-import {
-  Globe, RefreshCw, Sparkles, Trash2, Copy, Check,
-  ChevronLeft, ChevronRight, ExternalLink, Tag, Image as ImageIcon,
-} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw, Plus, Zap, Eye, Trash2, ImageOff } from 'lucide-react'
 import Layout from '../components/Layout'
+import CrawlJobPanel, { type PanelGroup, type PanelConfig } from '../components/CrawlJobPanel'
 import { useAuth } from '../lib/auth-context'
-import { crawlApi, type CrawlListing } from '../lib/api'
+import { usePlatform } from '../lib/platform-context'
+import { crawlApi, productGroupApi, userConfigApi } from '../lib/api'
+import { GROUPS, MY_CONFIGS, SAMPLE_LISTINGS, type SampleListing } from '../lib/sample-data'
 
-// ── helpers ────────────────────────────────────────────────────────────────
-
-const PLATFORM_LABEL: Record<string, { label: string; color: string }> = {
-  etsy:       { label: 'Etsy',       color: 'bg-orange-100 text-orange-700' },
-  aliexpress: { label: 'AliExpress', color: 'bg-red-100 text-red-700' },
-  printify:   { label: 'Printify',   color: 'bg-purple-100 text-purple-700' },
-  amazon:     { label: 'Amazon',     color: 'bg-yellow-100 text-yellow-700' },
-  walmart:    { label: 'Walmart',    color: 'bg-blue-100 text-blue-700' },
-}
-
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  ingested:  { label: 'Mới',       color: 'bg-gray-100 text-gray-600' },
-  analyzing: { label: 'Đang phân tích…', color: 'bg-blue-100 text-blue-700' },
-  analyzed:  { label: 'Đã phân tích', color: 'bg-green-100 text-green-700' },
-  failed:    { label: 'Thất bại',   color: 'bg-red-100 text-red-700' },
-}
-
-function Badge({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  )
-}
-
-// ── listing card ───────────────────────────────────────────────────────────
-
-function ListingCard({
-  listing,
-  onAnalyze,
-  onDelete,
-  analyzing,
-}: {
-  listing: CrawlListing
-  onAnalyze: (id: string) => void
-  onDelete: (id: string) => void
-  analyzing: boolean
-}) {
-  const thumb = listing.images?.[0] ?? null
-  const platform = PLATFORM_LABEL[listing.platform] ?? { label: listing.platform, color: 'bg-gray-100 text-gray-600' }
-  const status = STATUS_LABEL[listing.status] ?? { label: listing.status, color: 'bg-gray-100 text-gray-600' }
-  const canAnalyze = listing.status === 'ingested' || listing.status === 'failed'
-
-  return (
-    <div className="flex flex-col rounded-lg border border-gray-200 bg-white overflow-hidden hover:shadow-sm transition-shadow">
-      {/* Thumbnail */}
-      <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
-        {thumb ? (
-          <img src={thumb} alt={listing.title ?? ''} className="h-full w-full object-cover" />
-        ) : (
-          <ImageIcon size={32} className="text-gray-300" />
-        )}
-        {/* Badges overlay */}
-        <div className="absolute top-2 left-2 flex flex-wrap gap-1">
-          <Badge {...platform} />
-          {listing.crawl_purpose === 'tm' && (
-            <Badge label="TM" color="bg-violet-100 text-violet-700" />
-          )}
-        </div>
-        {listing.source_url && (
-          <a
-            href={listing.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute top-2 right-2 rounded-md bg-white/80 p-1 text-gray-500 hover:text-gray-900 backdrop-blur-sm"
-          >
-            <ExternalLink size={13} />
-          </a>
-        )}
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        <p className="line-clamp-2 text-sm font-medium text-gray-900 leading-snug">
-          {listing.title ?? <span className="text-gray-400 italic">Không có tiêu đề</span>}
-        </p>
-
-        {listing.shop_name && (
-          <p className="text-xs text-gray-400 truncate">{listing.shop_name}</p>
-        )}
-
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          {listing.price != null && (
-            <span className="font-medium text-gray-700">${listing.price.toFixed(2)}</span>
-          )}
-          {listing.tags.length > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Tag size={11} /> {listing.tags.length} tags
-            </span>
-          )}
-          {listing.images.length > 0 && (
-            <span className="flex items-center gap-0.5">
-              <ImageIcon size={11} /> {listing.images.length} ảnh
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
-          <Badge {...status} />
-          <div className="ml-auto flex items-center gap-1.5">
-            {canAnalyze && (
-              <button
-                onClick={() => onAnalyze(listing.id)}
-                disabled={analyzing}
-                title="Phân tích bằng AI"
-                className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              >
-                <Sparkles size={12} className={analyzing ? 'animate-pulse' : ''} />
-                Phân tích
-              </button>
-            )}
-            <button
-              onClick={() => onDelete(listing.id)}
-              title="Xóa"
-              className="rounded-md border border-gray-200 p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── main page ──────────────────────────────────────────────────────────────
-
-const LIMIT = 24
+const SAMPLE_GROUPS: PanelGroup[] = GROUPS.map((g) => ({ id: g.id, name: g.name }))
+const SAMPLE_CONFIGS: PanelConfig[] = MY_CONFIGS.map((c) => ({ id: c.id, name: c.name, from: c.from }))
 
 export default function CrawlPage() {
   const { apiKey } = useAuth()
+  const { platform } = usePlatform()
 
-  const [listings, setListings] = useState<CrawlListing[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const [listings, setListings] = useState<SampleListing[]>(SAMPLE_LISTINGS)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [usingSample, setUsingSample] = useState(true)
 
-  const [platform, setPlatform] = useState('')
+  // Groups + user configs feed the filter bar and the job panel.
+  const [groups, setGroups] = useState<PanelGroup[]>(SAMPLE_GROUPS)
+  const [myConfigs, setMyConfigs] = useState<PanelConfig[]>(SAMPLE_CONFIGS)
+
+  const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
+  const [panelFor, setPanelFor] = useState<SampleListing | null>(null)
 
-  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set())
-  const [copied, setCopied] = useState(false)
-
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
-
-  const load = useCallback(async () => {
-    if (!apiKey) return
+  const loadListings = useCallback(async () => {
+    if (!apiKey) {
+      setListings(SAMPLE_LISTINGS)
+      setUsingSample(true)
+      return
+    }
     setLoading(true)
-    setError(null)
     try {
-      const res = await crawlApi.getListings(apiKey, { page, limit: LIMIT, platform: platform || undefined, status: status || undefined })
-      setListings(res.data)
-      setTotal(res.total)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu')
+      const res = await crawlApi.getListings(apiKey, { limit: 48, platform: 'etsy' })
+      if (res.data.length) {
+        setListings(
+          res.data.map((l) => ({
+            id: l.id,
+            title: l.title ?? '(Không tiêu đề)',
+            shop: l.shop_name ?? '—',
+            group: '—',
+            price: l.price ?? 0,
+            hasJob: false,
+            images: l.images ?? [],
+          }))
+        )
+        setUsingSample(false)
+      } else {
+        setListings(SAMPLE_LISTINGS)
+        setUsingSample(true)
+      }
+    } catch {
+      setListings(SAMPLE_LISTINGS)
+      setUsingSample(true)
     } finally {
       setLoading(false)
     }
-  }, [apiKey, page, platform, status])
+  }, [apiKey])
 
-  useEffect(() => { load() }, [load])
-
-  // Reset page khi filter thay đổi
-  useEffect(() => { setPage(1) }, [platform, status])
-
-  async function handleAnalyze(id: string) {
-    if (!apiKey) return
-    setAnalyzingIds((s) => new Set(s).add(id))
-    // Optimistically update status
-    setListings((ls) => ls.map((l) => l.id === id ? { ...l, status: 'analyzing' } : l))
+  const loadMeta = useCallback(async () => {
+    if (!apiKey) {
+      setGroups(SAMPLE_GROUPS)
+      setMyConfigs(SAMPLE_CONFIGS)
+      return
+    }
     try {
-      await crawlApi.analyzeListing(apiKey, id)
-      setListings((ls) => ls.map((l) => l.id === id ? { ...l, status: 'analyzed' } : l))
+      const [g, c] = await Promise.all([
+        productGroupApi.list(apiKey, platform),
+        userConfigApi.list(apiKey),
+      ])
+      setGroups(g.length ? g.map((x) => ({ id: x.id, name: x.name })) : SAMPLE_GROUPS)
+      setMyConfigs(c.map((x) => ({ id: x.id, name: x.name, from: x.based_on })))
     } catch {
-      setListings((ls) => ls.map((l) => l.id === id ? { ...l, status: 'failed' } : l))
-    } finally {
-      setAnalyzingIds((s) => { const n = new Set(s); n.delete(id); return n })
+      setGroups(SAMPLE_GROUPS)
+      setMyConfigs(SAMPLE_CONFIGS)
     }
-  }
+  }, [apiKey, platform])
 
-  async function handleDelete(id: string) {
-    if (!apiKey || !confirm('Xóa listing này?')) return
+  useEffect(() => {
+    loadListings()
+    loadMeta()
+  }, [loadListings, loadMeta])
+
+  const filtered = listings.filter((l) => {
+    if (group && l.group !== group) return false
+    if (status === 'no-job' && l.hasJob) return false
+    if (status === 'has-job' && !l.hasJob) return false
+    if (search && !`${l.title} ${l.shop}`.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  async function addGroup() {
+    const name = window.prompt('Tên nhóm sản phẩm mới:')?.trim()
+    if (!name) return
+    if (!apiKey) {
+      setGroups((g) => [...g, { id: `local-${Date.now()}`, name }])
+      return
+    }
     try {
-      await crawlApi.deleteListing(apiKey, id)
-      setListings((ls) => ls.filter((l) => l.id !== id))
-      setTotal((t) => t - 1)
+      const created = await productGroupApi.create(apiKey, { name, platform })
+      setGroups((g) => [...g, { id: created.id, name: created.name }])
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Xóa thất bại')
+      alert(e instanceof Error ? e.message : 'Thêm nhóm thất bại')
     }
   }
 
-  function copyToken() {
-    if (!apiKey) return
-    navigator.clipboard.writeText(apiKey)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  function handleCreate(sku: string) {
+    if (panelFor) {
+      setListings((ls) => ls.map((l) => (l.id === panelFor.id ? { ...l, hasJob: true } : l)))
+    }
+    setPanelFor(null)
+    alert(`Đã tạo job cho SKU ${sku} → gửi sang Jobs queue (chờ chạy).`)
   }
 
   return (
-    <Layout title="Crawl">
-      {/* Crawl Token banner */}
-      <div className="mb-5 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 flex flex-wrap items-center gap-3">
-        <Globe size={16} className="text-gray-400 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-gray-700 mb-0.5">Crawl Token (dán vào extension)</p>
-          <p className="font-mono text-xs text-gray-500 truncate">{apiKey ?? '— Chưa có API key, tạo ở Settings → API Keys —'}</p>
-        </div>
-        {apiKey && (
-          <button
-            onClick={copyToken}
-            className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 shrink-0"
-          >
-            {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
-            {copied ? 'Đã copy!' : 'Copy token'}
-          </button>
-        )}
-      </div>
-
+    <Layout title="Etsy Crawl">
       {/* Filter bar */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <select
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900"
-        >
-          <option value="">Tất cả nền tảng</option>
-          <option value="etsy">Etsy</option>
-          <option value="aliexpress">AliExpress</option>
-          <option value="printify">Printify</option>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <select value={group} onChange={(e) => setGroup(e.target.value)} className="field">
+          <option value="">Tất cả nhóm</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.name}>
+              {g.name}
+            </option>
+          ))}
         </select>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900"
-        >
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="field">
           <option value="">Tất cả trạng thái</option>
-          <option value="ingested">Mới</option>
-          <option value="analyzed">Đã phân tích</option>
-          <option value="failed">Thất bại</option>
+          <option value="no-job">Chưa tạo job</option>
+          <option value="has-job">Đã tạo job</option>
         </select>
-
-        <span className="ml-auto text-sm text-gray-500">{total} listings</span>
-
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Tải lại
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Tìm tiêu đề, shop…"
+          className="field min-w-[120px] flex-1"
+        />
+        <button onClick={loadListings} disabled={loading} className="btn">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Tải lại
+        </button>
+        {/* "Thêm nhóm" — replaces the old "Thêm ngách" */}
+        <button className="btn btn-ok" onClick={addGroup}>
+          <Plus size={13} /> Thêm nhóm
         </button>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
-
-      {/* No API key */}
-      {!apiKey && (
-        <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Chưa có API key. Tạo ở{' '}
-          <a href="/settings/api-keys" className="font-medium underline">Settings → API Keys</a>{' '}
-          rồi dán vào extension để bắt đầu crawl.
+      {usingSample && (
+        <div className="mb-2.5 rounded-md border border-line bg-panel2 px-3 py-2 text-[11px] text-muted">
+          Đang hiển thị dữ liệu mẫu. Kết nối crawl service + API key để xem listing thật.
         </div>
       )}
 
-      {/* Empty state */}
-      {apiKey && !loading && listings.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 py-20 text-center">
-          <Globe size={36} className="mb-3 text-gray-300" />
-          <p className="text-sm font-medium text-gray-500">Chưa có listing nào</p>
-          <p className="mt-1 text-xs text-gray-400">
-            Cài extension v1.9.0, dán crawl token, rồi crawl listing từ Etsy/AliExpress/Printify.
-          </p>
-        </div>
-      )}
-
-      {/* Grid */}
-      {listings.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {listings.map((l) => (
-            <ListingCard
-              key={l.id}
-              listing={l}
-              onAnalyze={handleAnalyze}
-              onDelete={handleDelete}
-              analyzing={analyzingIds.has(l.id)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1 || loading}
-            className="rounded-md border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+      {/* Listing rows */}
+      <div className="grid gap-2">
+        {filtered.map((l) => (
+          <div
+            key={l.id}
+            className="grid grid-cols-[60px_1fr_auto] items-center gap-2.5 rounded-[10px] border border-line bg-panel p-2.5"
           >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-sm text-gray-600">
-            Trang {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages || loading}
-            className="rounded-md border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
+            {l.images[0] ? (
+              <img
+                src={l.images[0]}
+                alt=""
+                className="h-[60px] w-[60px] rounded-md border border-line object-cover"
+              />
+            ) : (
+              <div className="grid h-[60px] w-[60px] place-items-center rounded-md border border-line bg-panel2 text-muted">
+                <ImageOff size={20} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-xs font-medium text-fg">{l.title}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                {l.shop} · {l.group} · ${l.price.toFixed(2)} ·
+                <span className={`badge ${l.hasJob ? 'b-ac' : 'b-mu'}`}>
+                  {l.hasJob ? 'Đã tạo job' : 'Chưa tạo job'}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              {l.hasJob ? (
+                <button className="btn !text-[11px] text-muted">
+                  <Eye size={12} /> Xem job
+                </button>
+              ) : (
+                <button className="btn btn-acc !text-[11px]" onClick={() => setPanelFor(l)}>
+                  <Zap size={12} /> Tạo job
+                </button>
+              )}
+              <button className="btn !px-2 !py-1 !text-[11px]" title="Xoá">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="rounded-[10px] border border-dashed border-line py-16 text-center text-xs text-muted">
+            Không có listing khớp bộ lọc.
+          </div>
+        )}
+      </div>
+
+      {panelFor && (
+        <CrawlJobPanel
+          listing={panelFor}
+          groups={groups}
+          myConfigs={myConfigs}
+          onClose={() => setPanelFor(null)}
+          onCreate={handleCreate}
+        />
       )}
     </Layout>
   )

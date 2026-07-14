@@ -1,32 +1,62 @@
 import { type ReactNode } from 'react'
-import { LogOut } from 'lucide-react'
+import { Store } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../lib/auth-context'
+import { usePlatform, MARKETPLACES, type Platform } from '../lib/platform-context'
 
 export default function Layout({ title, children }: { title?: string; children: ReactNode }) {
   const { user, logout } = useAuth()
+  const { platform, marketplace, setPlatform, setMarketplace } = usePlatform()
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-bg">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-          <h1 className="text-base font-semibold">{title}</h1>
-          <div className="flex items-center gap-4 text-sm">
-            {user && (
-              <span className="text-gray-500">
-                {user.user_id.slice(0, 8)}… · <span className="font-medium text-gray-900">{user.role}</span>
-              </span>
-            )}
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-gray-600 hover:bg-gray-100"
-            >
-              <LogOut size={16} /> Đăng xuất
-            </button>
+        {/* Header: logo · platform + marketplace (moved here) · user · logout */}
+        <header className="flex h-[46px] flex-shrink-0 items-center gap-2.5 border-b border-line bg-panel px-3.5">
+          <div className="whitespace-nowrap text-[13px] font-medium">
+            <span className="text-brand">CBT</span> Listing Studio
           </div>
+
+          {/* Platform + marketplace dropdowns */}
+          <div className="flex items-center gap-1.5">
+            <Store size={14} className="text-muted" />
+            <select
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value as Platform)}
+              className="cursor-pointer rounded-md border border-line bg-panel2 px-2 py-1 text-xs text-fg focus:outline-none focus:border-brand"
+            >
+              <option value="amazon">Amazon</option>
+              <option value="walmart">Walmart</option>
+            </select>
+            <select
+              value={marketplace}
+              onChange={(e) => setMarketplace(e.target.value)}
+              className="cursor-pointer rounded-md border border-line bg-panel2 px-2 py-1 text-xs text-muted focus:outline-none focus:border-brand"
+            >
+              {MARKETPLACES[platform].map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1" />
+
+          {user && <span className="text-xs text-muted">{user.user_id.slice(0, 12)}…</span>}
+          <button
+            onClick={logout}
+            className="rounded-md border border-line bg-transparent px-2 py-1 text-[11px] text-danger hover:border-danger"
+          >
+            Đăng xuất
+          </button>
         </header>
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+
+        <main className="relative flex-1 overflow-auto p-3.5">
+          {title && <h1 className="mb-3 text-[15px] font-medium text-fg">{title}</h1>}
+          {children}
+        </main>
       </div>
     </div>
   )

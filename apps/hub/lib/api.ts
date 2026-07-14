@@ -221,3 +221,99 @@ export const listWmtApi = {
     return unwrap<Array<Record<string, unknown>>>(res)
   },
 }
+
+// ---- User configs + product groups (hub-local API routes, same origin) ----
+
+export type UserConfig = {
+  id: string
+  account_id: string
+  name: string
+  based_on: string // product_configs.key
+  overrides: Record<string, unknown>
+  created_at: string
+}
+
+export type ProductGroup = {
+  id: string
+  account_id: string
+  name: string
+  platform: 'amazon' | 'walmart'
+  created_at: string
+}
+
+// A single field definition inside a product_configs.fields[] schema.
+export type ConfigField = {
+  k: string
+  label: string
+  type: 'text' | 'textarea' | 'number' | 'select'
+  def: string
+  options?: string // comma-separated for type=select
+  attr?: string
+  wrap?: string
+  kind?: string
+}
+
+export type BaseConfig = {
+  key: string
+  label: string
+  platform: string
+  product_type: string
+  variation_theme: string | null
+  fields: ConfigField[]
+}
+
+export const userConfigApi = {
+  async list(apiKey: string) {
+    const res = await fetch('/api/user-configs', { headers: apiKeyHeaders(apiKey) })
+    return unwrap<UserConfig[]>(res)
+  },
+  async create(apiKey: string, body: { name: string; based_on: string; overrides?: Record<string, unknown> }) {
+    const res = await fetch('/api/user-configs', {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<UserConfig>(res)
+  },
+  async update(apiKey: string, id: string, body: { name?: string; overrides?: Record<string, unknown> }) {
+    const res = await fetch(`/api/user-configs/${id}`, {
+      method: 'PATCH',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<UserConfig>(res)
+  },
+  async remove(apiKey: string, id: string) {
+    const res = await fetch(`/api/user-configs/${id}`, { method: 'DELETE', headers: apiKeyHeaders(apiKey) })
+    return unwrap<{ id: string; deleted: boolean }>(res)
+  },
+}
+
+export const productConfigApi = {
+  async get(apiKey: string, key: string) {
+    const res = await fetch(`/api/product-configs/${encodeURIComponent(key)}`, {
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<BaseConfig>(res)
+  },
+}
+
+export const productGroupApi = {
+  async list(apiKey: string, platform?: string) {
+    const q = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    const res = await fetch(`/api/product-groups${q}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<ProductGroup[]>(res)
+  },
+  async create(apiKey: string, body: { name: string; platform: string }) {
+    const res = await fetch('/api/product-groups', {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<ProductGroup>(res)
+  },
+  async remove(apiKey: string, id: string) {
+    const res = await fetch(`/api/product-groups/${id}`, { method: 'DELETE', headers: apiKeyHeaders(apiKey) })
+    return unwrap<{ id: string; deleted: boolean }>(res)
+  },
+}

@@ -3,6 +3,7 @@ import type { AppProps } from 'next/app'
 import { useRouter } from 'next/router'
 import '../styles/globals.css'
 import { AuthProvider, useAuth } from '../lib/auth-context'
+import { PlatformProvider } from '../lib/platform-context'
 
 const PUBLIC_ROUTES = ['/login', '/register']
 
@@ -19,7 +20,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [ready, token, isPublic, router])
 
   // Avoid flashing protected content before the redirect resolves.
-  if (!ready) return <div className="p-6 text-sm text-gray-400">Đang tải…</div>
+  if (!ready) return <div className="flex h-full items-center justify-center text-sm text-muted">Đang tải…</div>
   if (!token && !isPublic) return null
   if (token && isPublic) return null
 
@@ -29,9 +30,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>
-      <AuthGuard>
-        <Component {...pageProps} />
-      </AuthGuard>
+      <PlatformProvider>
+        <AuthGuard>
+          <Component {...pageProps} />
+        </AuthGuard>
+      </PlatformProvider>
     </AuthProvider>
   )
 }

@@ -9,5 +9,75 @@ body,
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-bg text-fg antialiased;
+  font-size: 13px;
+}
+
+/* Dark scrollbars so overflow areas match the theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b3a transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2b2b3a;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a3a4c;
+  background-clip: padding-box;
+}
+
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+
+@layer components {
+  /* Surfaces + controls — dense, matching ui-mockup-dark.html */
+  .card {
+    @apply rounded-[10px] border border-line bg-panel p-3.5;
+  }
+  .card-title {
+    @apply mb-2 flex items-center gap-1.5 text-xs font-medium text-muted;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-xs font-medium text-fg transition hover:border-brand hover:text-brand disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-acc {
+    @apply border-brand bg-brand text-white hover:bg-brand hover:text-white hover:opacity-90;
+  }
+  .btn-ok {
+    @apply border-ok bg-ok-soft text-ok hover:text-ok hover:opacity-90;
+  }
+  .btn-danger {
+    @apply text-danger hover:border-danger hover:text-danger;
+  }
+  .field {
+    @apply rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-xs text-fg placeholder:text-muted focus:outline-none focus:border-brand;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium;
+  }
+  .b-ok {
+    @apply border-ok bg-ok-soft text-ok;
+  }
+  .b-wn {
+    @apply border-warn bg-warn-soft text-warn;
+  }
+  .b-er {
+    @apply border-danger bg-danger-soft text-danger;
+  }
+  .b-mu {
+    @apply border-line bg-panel2 text-muted;
+  }
+  .b-ac {
+    @apply border-brand bg-brand-soft text-brand;
+  }
 }
