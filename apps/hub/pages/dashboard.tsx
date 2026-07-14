@@ -2,24 +2,25 @@ import { useCallback, useEffect, useState } from 'react'
 import { Users, TrendingUp, Clock, RefreshCw, Activity } from 'lucide-react'
 import Layout from '../components/Layout'
 import { BarChart, LineChart, type LineSeries } from '../components/Charts'
+import { Skeleton, SkeletonRows } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
-import { listAmzApi, type AmzJob } from '../lib/api'
+import { dashboardApi, type DashboardMetrics } from '../lib/api'
 import { timeAgo } from '../lib/format'
 
 type Stat = { n: string; l: string; d: string; tone: 'up' | 'down' | 'flat' }
 
-// Sample stats — used until list-amz jobs are reachable.
+// Sample stats — shown only in local dev (no API key / backend configured).
 const SAMPLE_STATS: Stat[] = [
-  { n: '1,248', l: 'Jobs tháng này', d: '+12% so tháng trước', tone: 'up' },
-  { n: '94%', l: 'Tỷ lệ thành công', d: '+2%', tone: 'up' },
-  { n: '6', l: 'Nhân viên hoạt động', d: 'không đổi', tone: 'flat' },
+  { n: '1,248', l: 'Tổng jobs', d: '30 ngày gần nhất', tone: 'up' },
+  { n: '94%', l: 'Tỷ lệ thành công', d: 'mẫu', tone: 'up' },
+  { n: '6', l: 'Nhân viên hoạt động', d: 'mẫu', tone: 'flat' },
   { n: '3', l: 'Job đang lỗi', d: 'cần xử lý', tone: 'down' },
 ]
 
 type RecentJob = { sku: string; action: string; user: string; status: string; time: string }
 
-// Jobs per employee, per period.
-const JOBS_BY_PERIOD: Record<string, { label: string; value: number }[]> = {
+// Sample per-employee bars + growth lines (local dev only).
+const SAMPLE_BY_PERIOD: Record<string, { label: string; value: number }[]> = {
   today: [
     { label: 'Thang', value: 48 }, { label: 'Linh', value: 41 }, { label: 'Nam', value: 33 },
     { label: 'Mai', value: 29 }, { label: 'Hoa', value: 22 }, { label: 'Duc', value: 18 },
@@ -34,8 +35,7 @@ const JOBS_BY_PERIOD: Record<string, { label: string; value: number }[]> = {
   ],
 }
 
-// Productivity growth over 4 weeks (the new chart).
-const GROWTH: { labels: string[]; series: LineSeries[] } = {
+const SAMPLE_GROWTH: { labels: string[]; series: LineSeries[] } = {
   labels: ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'],
   series: [
     { name: 'Thang', color: '#5b9bf5', points: [260, 280, 295, 312] },
@@ -53,28 +53,24 @@ const SAMPLE_RECENT: RecentJob[] = [
   { sku: 'CANDLE-003', action: 'create', user: 'Mai', status: 'success', time: '35 phút trước' },
 ]
 
-function jobToRecent(j: AmzJob): RecentJob {
-  const fv = (j.payload?.field_values ?? {}) as Record<string, string>
-  return {
-    sku: j.sku ?? (fv.item_name ? fv.item_name.slice(0, 20) : '—'),
-    action: j.action,
-    user: j.created_by_email ?? '—',
-    status: j.status,
-    time: timeAgo(j.created_at),
-  }
-}
-
-// Build the stat cards from a fetched job page (total from meta).
-function statsFromJobs(jobs: AmzJob[], total: number): Stat[] {
-  const done = jobs.filter((j) => j.status === 'success' || j.status === 'failed')
-  const success = done.filter((j) => j.status === 'success').length
-  const failed = jobs.filter((j) => j.status === 'failed').length
-  const rate = done.length ? Math.round((success / done.length) * 100) : 0
+// Map the metrics payload's stat block onto the four stat cards.
+function statsFromMetrics(m: DashboardMetrics): Stat[] {
+  const s = m.stats
   return [
-    { n: String(total), l: 'Tổng jobs', d: `${jobs.length} gần nhất`, tone: 'up' },
-    { n: `${rate}%`, l: 'Tỷ lệ thành công', d: `${success}/${done.length}`, tone: rate >= 90 ? 'up' : 'down' },
-    { n: String(SAMPLE_STATS[2].n), l: 'Nhân viên hoạt động', d: 'không đổi', tone: 'flat' },
-    { n: String(failed), l: 'Job đang lỗi', d: failed ? 'cần xử lý' : 'ổn định', tone: failed ? 'down' : 'up' },
+    { n: s.totalJobs.toLocaleString('vi-VN'), l: 'Tổng jobs', d: '30 ngày gần nhất', tone: 'up' },
+    {
+      n: `${s.successRate}%`,
+      l: 'Tỷ lệ thành công',
+      d: `${s.successCount}/${s.doneCount}`,
+      tone: s.successRate >= 90 ? 'up' : 'down',
+    },
+    { n: String(s.activeUsers), l: 'Nhân viên hoạt động', d: 'đang hoạt động', tone: 'flat' },
+    {
+      n: String(s.failedJobs),
+      l: 'Job đang lỗi',
+      d: s.failedJobs ? 'cần xử lý' : 'ổn định',
+      tone: s.failedJobs ? 'down' : 'up',
+    },
   ]
 }
 
@@ -91,7 +87,7 @@ const HEALTH = [
   { name: 'Etsy Extension', ok: false, text: 'Cần kiểm tra' },
 ]
 
-const PERIODS: { key: string; label: string }[] = [
+const PERIODS: { key: 'today' | '7d' | '30d'; label: string }[] = [
   { key: 'today', label: 'Hôm nay' },
   { key: '7d', label: '7 ngày' },
   { key: '30d', label: '30 ngày' },
@@ -99,27 +95,32 @@ const PERIODS: { key: string; label: string }[] = [
 
 export default function DashboardPage() {
   const { apiKey } = useAuth()
-  const [period, setPeriod] = useState('7d')
+  const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? ''
 
-  const [stats, setStats] = useState<Stat[]>(SAMPLE_STATS)
-  const [recent, setRecent] = useState<RecentJob[]>(SAMPLE_RECENT)
+  // metrics === null while loading (real mode); sample mode fills immediately.
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [usingSample, setUsingSample] = useState(!apiKey)
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!apiKey) {
-      setStats(SAMPLE_STATS)
-      setRecent(SAMPLE_RECENT)
+      // Local dev, no backend configured → sample data.
+      setMetrics(null)
+      setUsingSample(true)
       return
     }
     setLoading(true)
+    setErrorMsg(null)
     try {
-      const { data, total } = await listAmzApi.getJobs(apiKey, { limit: 50 })
-      setStats(statsFromJobs(data, total))
-      setRecent(data.slice(0, 8).map(jobToRecent))
-    } catch {
-      setStats(SAMPLE_STATS)
-      setRecent(SAMPLE_RECENT)
+      const m = await dashboardApi.metrics(apiKey)
+      setMetrics(m)
+      setUsingSample(false)
+    } catch (e) {
+      setMetrics(null)
+      setUsingSample(false)
+      setErrorMsg(e instanceof Error ? e.message : 'Không tải được số liệu')
     } finally {
       setLoading(false)
     }
@@ -129,23 +130,48 @@ export default function DashboardPage() {
     load()
   }, [load])
 
+  // Derived view models (sample vs real). In real mode with no metrics yet → null = skeleton.
+  const showSkeleton = !usingSample && !metrics && !errorMsg
+  const stats: Stat[] | null = usingSample ? SAMPLE_STATS : metrics ? statsFromMetrics(metrics) : null
+  const barData = usingSample ? SAMPLE_BY_PERIOD[period] : metrics?.byUserByPeriod[period] ?? []
+  const growth = usingSample ? SAMPLE_GROWTH : metrics?.growth ?? { labels: [], series: [] }
+  const recent: RecentJob[] | null = usingSample
+    ? SAMPLE_RECENT
+    : metrics
+      ? metrics.recent.map((r) => ({ ...r, time: timeAgo(r.created_at) }))
+      : null
+
   return (
     <Layout title="Dashboard">
+      {errorMsg && (
+        <div className="mb-2.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[11px] text-danger">
+          {errorMsg}
+        </div>
+      )}
+
       {/* Stat cards */}
       <div className="mb-2.5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {stats.map((s) => (
-          <div key={s.l} className="rounded-[10px] border border-line bg-panel px-3 py-2.5">
-            <div className="text-xl font-medium text-fg">{s.n}</div>
-            <div className="mt-0.5 text-[11px] text-muted">{s.l}</div>
-            <div
-              className={`mt-0.5 text-[11px] ${
-                s.tone === 'up' ? 'text-ok' : s.tone === 'down' ? 'text-danger' : 'text-muted'
-              }`}
-            >
-              {s.d}
-            </div>
-          </div>
-        ))}
+        {showSkeleton || !stats
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-[10px] border border-line bg-panel px-3 py-2.5">
+                <Skeleton className="h-6 w-20" />
+                <Skeleton className="mt-1.5 h-3 w-24" />
+                <Skeleton className="mt-1.5 h-3 w-16" />
+              </div>
+            ))
+          : stats.map((s) => (
+              <div key={s.l} className="rounded-[10px] border border-line bg-panel px-3 py-2.5">
+                <div className="text-xl font-medium text-fg">{s.n}</div>
+                <div className="mt-0.5 text-[11px] text-muted">{s.l}</div>
+                <div
+                  className={`mt-0.5 text-[11px] ${
+                    s.tone === 'up' ? 'text-ok' : s.tone === 'down' ? 'text-danger' : 'text-muted'
+                  }`}
+                >
+                  {s.d}
+                </div>
+              </div>
+            ))}
       </div>
 
       {/* Charts */}
@@ -165,14 +191,26 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
-          <BarChart data={JOBS_BY_PERIOD[period]} />
+          {showSkeleton ? (
+            <Skeleton className="h-[170px] w-full" />
+          ) : barData.length ? (
+            <BarChart data={barData} />
+          ) : (
+            <div className="py-14 text-center text-xs text-muted">Chưa có dữ liệu job.</div>
+          )}
         </div>
 
         <div className="card">
           <div className="card-title">
             <TrendingUp size={14} /> Tăng trưởng năng suất — 4 tuần
           </div>
-          <LineChart labels={GROWTH.labels} series={GROWTH.series} />
+          {showSkeleton ? (
+            <Skeleton className="h-[170px] w-full" />
+          ) : growth.series.length ? (
+            <LineChart labels={growth.labels} series={growth.series} />
+          ) : (
+            <div className="py-14 text-center text-xs text-muted">Chưa có dữ liệu job.</div>
+          )}
         </div>
       </div>
 
@@ -195,17 +233,27 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {recent.map((j, i) => (
-              <tr key={`${j.sku}-${i}`} className="hover:bg-panel2">
-                <td className="border-b border-line px-2 py-1.5">{j.sku}</td>
-                <td className="border-b border-line px-2 py-1.5">{j.action}</td>
-                <td className="border-b border-line px-2 py-1.5">{j.user}</td>
-                <td className="border-b border-line px-2 py-1.5">
-                  <span className={`badge ${STATUS_BADGE[j.status]}`}>{j.status}</span>
+            {showSkeleton || !recent ? (
+              <SkeletonRows rows={6} cols={5} />
+            ) : recent.length ? (
+              recent.map((j, i) => (
+                <tr key={`${j.sku}-${i}`} className="hover:bg-panel2">
+                  <td className="border-b border-line px-2 py-1.5">{j.sku}</td>
+                  <td className="border-b border-line px-2 py-1.5">{j.action}</td>
+                  <td className="border-b border-line px-2 py-1.5">{j.user}</td>
+                  <td className="border-b border-line px-2 py-1.5">
+                    <span className={`badge ${STATUS_BADGE[j.status] ?? 'b-mu'}`}>{j.status}</span>
+                  </td>
+                  <td className="border-b border-line px-2 py-1.5 text-muted">{j.time}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-2 py-10 text-center text-muted">
+                  Chưa có job nào.
                 </td>
-                <td className="border-b border-line px-2 py-1.5 text-muted">{j.time}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

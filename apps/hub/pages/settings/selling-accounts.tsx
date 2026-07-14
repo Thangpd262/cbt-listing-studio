@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Plug, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SettingsTabs from '../../components/SettingsTabs'
 import { useAuth } from '../../lib/auth-context'
 import { accountApi, type SellingAccount } from '../../lib/api'
+
+// Per-account connection-test state (idle → testing → ok/error).
+type TestState = { status: 'testing' | 'ok' | 'error'; error?: string }
 
 const PLATFORMS = ['amazon', 'walmart', 'etsy', 'printify']
 const CRED_TYPES = ['private', 'oauth'] as const
@@ -26,6 +29,7 @@ export default function SellingAccountsPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [tests, setTests] = useState<Record<string, TestState>>({})
 
   const load = useCallback(async () => {
     if (!token) return
@@ -85,6 +89,20 @@ export default function SellingAccountsPage() {
     }
   }
 
+  async function onTest(id: string) {
+    if (!token) return
+    setTests((t) => ({ ...t, [id]: { status: 'testing' } }))
+    try {
+      const r = await accountApi.testSellingAccount(token, id)
+      setTests((t) => ({ ...t, [id]: r.ok ? { status: 'ok' } : { status: 'error', error: r.error } }))
+    } catch (err) {
+      setTests((t) => ({
+        ...t,
+        [id]: { status: 'error', error: err instanceof Error ? err.message : 'Kiểm tra thất bại' },
+      }))
+    }
+  }
+
   const input = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none'
 
   return (
@@ -103,24 +121,56 @@ export default function SellingAccountsPage() {
             ) : (
               <table className="w-full text-sm">
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-gray-100 last:border-0">
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{r.name}</div>
-                        <div className="text-gray-500">
-                          {r.platform} · {r.region} · {r.is_active ? 'active' : 'inactive'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => onDelete(r.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100"
-                        >
-                          <Trash2 size={15} /> Xoá
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const t = tests[r.id]
+                    return (
+                      <tr key={r.id} className="border-b border-gray-100 last:border-0">
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{r.name}</div>
+                          <div className="text-gray-500">
+                            {r.platform} · {r.region} · {r.is_active ? 'active' : 'inactive'}
+                          </div>
+                          {/* Connection-test result badge */}
+                          {t?.status === 'ok' && (
+                            <div className="mt-1 inline-flex items-center gap-1 rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                              <CheckCircle2 size={13} /> Hoạt động
+                            </div>
+                          )}
+                          {t?.status === 'error' && (
+                            <div
+                              className="mt-1 inline-flex max-w-[280px] items-start gap-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700"
+                              title={t.error}
+                            >
+                              <XCircle size={13} className="mt-px shrink-0" />
+                              <span className="line-clamp-2">Lỗi: {t.error ?? 'không rõ'}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex gap-2">
+                            <button
+                              onClick={() => onTest(r.id)}
+                              disabled={t?.status === 'testing'}
+                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              {t?.status === 'testing' ? (
+                                <Loader2 size={15} className="animate-spin" />
+                              ) : (
+                                <Plug size={15} />
+                              )}
+                              Kiểm tra kết nối
+                            </button>
+                            <button
+                              onClick={() => onDelete(r.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100"
+                            >
+                              <Trash2 size={15} /> Xoá
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             )}

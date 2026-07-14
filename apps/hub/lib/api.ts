@@ -8,6 +8,16 @@ const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL ?? ''
 const LIST_AMZ_URL = process.env.NEXT_PUBLIC_LIST_AMZ_URL ?? ''
 const LIST_WMT_URL = process.env.NEXT_PUBLIC_LIST_WMT_URL ?? ''
 
+// Whether each backend is wired via env. Pages use this to decide between real
+// data (skeleton while loading) and local sample data (dev, no env vars set).
+export const serviceConfigured = {
+  account: !!ACCOUNT_URL,
+  crawl: !!CRAWL_URL,
+  generator: !!GENERATOR_URL,
+  listAmz: !!LIST_AMZ_URL,
+  listWmt: !!LIST_WMT_URL,
+}
+
 export type ApiEnvelope<T> = { success: boolean; data?: T; error?: string }
 
 // Unwrap the { success, data } envelope; throw a readable error otherwise.
@@ -94,6 +104,14 @@ export const accountApi = {
   async deleteSellingAccount(token: string, id: string) {
     const res = await fetch(`${ACCOUNT_URL}/api/selling-accounts/${id}`, { method: 'DELETE', headers: bearer(token) })
     return unwrap<{ id: string; deleted: boolean }>(res)
+  },
+  // Verify a selling account's stored credentials against the marketplace API.
+  async testSellingAccount(token: string, id: string) {
+    const res = await fetch(`${ACCOUNT_URL}/api/selling-accounts/${id}/test`, {
+      method: 'POST',
+      headers: bearer(token),
+    })
+    return unwrap<{ ok: boolean; error?: string }>(res)
   },
 
   // Team
@@ -311,10 +329,21 @@ export type AmzJob = {
   created_by_email?: string | null
 }
 
+export type AmzProduct = {
+  id: string
+  sku: string
+  asin: string | null
+  title: string
+  status: 'draft' | 'active' | 'inactive' | 'deleted'
+  product_type: string | null
+  created_at: string
+}
+
 export const listAmzApi = {
-  async getProducts(apiKey: string) {
-    const res = await fetch(`${LIST_AMZ_URL}/api/products`, { headers: apiKeyHeaders(apiKey) })
-    return unwrap<Array<Record<string, unknown>>>(res)
+  async getProducts(apiKey: string, params: { status?: string } = {}) {
+    const q = params.status ? `?status=${encodeURIComponent(params.status)}` : ''
+    const res = await fetch(`${LIST_AMZ_URL}/api/products${q}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<AmzProduct[]>(res)
   },
   async getJobs(apiKey: string, params: { status?: string; page?: number; limit?: number } = {}) {
     const q = new URLSearchParams()
@@ -422,6 +451,32 @@ export const productConfigApi = {
       headers: apiKeyHeaders(apiKey),
     })
     return unwrap<BaseConfig>(res)
+  },
+}
+
+export type DashboardMetrics = {
+  stats: {
+    totalJobs: number
+    successRate: number
+    successCount: number
+    doneCount: number
+    activeUsers: number
+    failedJobs: number
+  }
+  byUserByPeriod: {
+    today: { label: string; value: number }[]
+    '7d': { label: string; value: number }[]
+    '30d': { label: string; value: number }[]
+  }
+  growth: { labels: string[]; series: { name: string; color: string; points: number[] }[] }
+  recent: { sku: string; action: string; user: string; status: string; created_at: string }[]
+}
+
+// Hub-local route: real dashboard numbers straight from Supabase (service key).
+export const dashboardApi = {
+  async metrics(apiKey: string) {
+    const res = await fetch('/api/dashboard/metrics', { headers: apiKeyHeaders(apiKey) })
+    return unwrap<DashboardMetrics>(res)
   },
 }
 

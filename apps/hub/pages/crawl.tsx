@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Plus } from 'lucide-react'
 import Layout from '../components/Layout'
 import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } from '../components/CrawlJobPanel'
+import { SkeletonCards } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform } from '../lib/platform-context'
 import {
@@ -9,6 +10,7 @@ import {
   crawlApi,
   generatorApi,
   productGroupApi,
+  serviceConfigured,
   userConfigApi,
   type SellingAccount,
   type TeamMember,
@@ -28,14 +30,18 @@ function overrideImages(overrides: Record<string, unknown>): string[] {
   return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : []
 }
 
+// Sample listings only when the crawl service isn't wired (local dev).
+const USE_SAMPLE = !serviceConfigured.crawl
+
 export default function CrawlPage() {
   const { apiKey, token, user } = useAuth()
   const { platform } = usePlatform()
   const isAdmin = user?.role === 'admin'
 
-  const [listings, setListings] = useState<SampleListing[]>(SAMPLE_LISTINGS)
+  const [listings, setListings] = useState<SampleListing[]>(USE_SAMPLE ? SAMPLE_LISTINGS : [])
   const [loading, setLoading] = useState(false)
-  const [usingSample, setUsingSample] = useState(true)
+  const [loaded, setLoaded] = useState(USE_SAMPLE)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   // Groups + user configs feed the filter bar and the job panel.
   const [groups, setGroups] = useState<PanelGroup[]>(SAMPLE_GROUPS)
@@ -51,41 +57,37 @@ export default function CrawlPage() {
   const [search, setSearch] = useState('')
 
   const loadListings = useCallback(async () => {
-    if (!apiKey) {
+    if (USE_SAMPLE || !apiKey) {
       setListings(SAMPLE_LISTINGS)
-      setUsingSample(true)
+      setLoaded(true)
       return
     }
     setLoading(true)
+    setErrorMsg(null)
     try {
       const res = await crawlApi.getListings(apiKey, {
         limit: 48,
         platform: 'etsy',
         user_id: isAdmin && userFilter ? userFilter : undefined,
       })
-      if (res.data.length) {
-        setListings(
-          res.data.map((l) => ({
-            id: l.id,
-            title: l.title ?? '(Không tiêu đề)',
-            shop: l.shop_name ?? '—',
-            group: '—',
-            price: l.price ?? 0,
-            hasJob: false,
-            images: l.images ?? [],
-            email: l.created_by_email ?? undefined,
-            createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
-          }))
-        )
-        setUsingSample(false)
-      } else {
-        setListings(SAMPLE_LISTINGS)
-        setUsingSample(true)
-      }
-    } catch {
-      setListings(SAMPLE_LISTINGS)
-      setUsingSample(true)
+      setListings(
+        res.data.map((l) => ({
+          id: l.id,
+          title: l.title ?? '(Không tiêu đề)',
+          shop: l.shop_name ?? '—',
+          group: '—',
+          price: l.price ?? 0,
+          hasJob: false,
+          images: l.images ?? [],
+          email: l.created_by_email ?? undefined,
+          createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
+        }))
+      )
+    } catch (e) {
+      setListings([])
+      setErrorMsg(e instanceof Error ? e.message : 'Không tải được listing')
     } finally {
+      setLoaded(true)
       setLoading(false)
     }
   }, [apiKey, isAdmin, userFilter])
@@ -169,7 +171,7 @@ export default function CrawlPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Xoá listing crawl này?')) return
-    if (apiKey && !usingSample) {
+    if (apiKey && !USE_SAMPLE) {
       try {
         await crawlApi.deleteListing(apiKey, id)
       } catch (e) {
@@ -227,34 +229,43 @@ export default function CrawlPage() {
         </button>
       </div>
 
-      {usingSample && (
+      {USE_SAMPLE && (
         <div className="mb-2.5 rounded-md border border-line bg-panel2 px-3 py-2 text-[11px] text-muted">
           Đang hiển thị dữ liệu mẫu. Kết nối crawl service + API key để xem listing thật.
         </div>
       )}
+      {errorMsg && (
+        <div className="mb-2.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[11px] text-danger">
+          {errorMsg}
+        </div>
+      )}
 
       {/* One inline job card per crawled listing */}
-      <div className="grid gap-3">
-        {filtered.map((l, i) => (
-          <CrawlJobPanel
-            key={l.id}
-            listing={l}
-            index={i}
-            myConfigs={myConfigs}
-            prompts={prompts}
-            sellingAccounts={sellingAccounts}
-            apiKey={apiKey}
-            platform={platform}
-            onCreated={() => handleCreated(l.id)}
-            onDelete={() => handleDelete(l.id)}
-          />
-        ))}
-        {filtered.length === 0 && (
-          <div className="rounded-[10px] border border-dashed border-line py-16 text-center text-xs text-muted">
-            Không có listing khớp bộ lọc.
-          </div>
-        )}
-      </div>
+      {!loaded && !USE_SAMPLE ? (
+        <SkeletonCards count={3} height="h-52" />
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map((l, i) => (
+            <CrawlJobPanel
+              key={l.id}
+              listing={l}
+              index={i}
+              myConfigs={myConfigs}
+              prompts={prompts}
+              sellingAccounts={sellingAccounts}
+              apiKey={apiKey}
+              platform={platform}
+              onCreated={() => handleCreated(l.id)}
+              onDelete={() => handleDelete(l.id)}
+            />
+          ))}
+          {filtered.length === 0 && !errorMsg && (
+            <div className="rounded-[10px] border border-dashed border-line py-16 text-center text-xs text-muted">
+              {listings.length === 0 ? 'Chưa có listing nào.' : 'Không có listing khớp bộ lọc.'}
+            </div>
+          )}
+        </div>
+      )}
     </Layout>
   )
 }
