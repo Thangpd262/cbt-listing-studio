@@ -195,21 +195,25 @@ export default function CrawlJobPanel({
             <div className="mb-1 text-[11px] text-muted">Config dòng hàng</div>
             <select value={config} onChange={(e) => setConfig(e.target.value)} className="field w-full">
               <option value="">— Chọn config —</option>
-              <optgroup label="Config của tôi (từ system defaults)">
-                {myConfigs.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} (từ {c.from})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Config mặc định (hệ thống — chỉ đọc)">
-                {SYSTEM_CONFIGS.map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.key} — {c.label}
-                  </option>
-                ))}
-              </optgroup>
+              {myConfigs.length > 0
+                ? // User's own configs (cloned from a system default) take priority.
+                  myConfigs.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} (từ {c.from})
+                    </option>
+                  ))
+                : // Fallback: no user config yet → pick a system default directly.
+                  SYSTEM_CONFIGS.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.key} — {c.label}
+                    </option>
+                  ))}
             </select>
+            {myConfigs.length === 0 && (
+              <div className="mt-1 text-[10px] text-muted">
+                Chưa có config riêng — đang dùng config mặc định hệ thống.
+              </div>
+            )}
           </div>
           <div>
             <div className="mb-1 text-[11px] text-muted">Nhóm sản phẩm</div>
