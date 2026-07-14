@@ -9,10 +9,24 @@ export type AuthContext = {
   permissions: Array<{ selling_account_id: string; role: string }>
 }
 
+// Allow browser calls from the hub (and other origins). Auth is via the
+// X-API-Key header (not cookies), so reflecting the origin is safe and we
+// don't set Allow-Credentials. Reflecting (vs '*') keeps it future-proof.
+function setCorsHeaders(req: NextApiRequest, res: NextApiResponse) {
+  const origin = (req.headers.origin as string) || '*'
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Vary', 'Origin')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization, x-crawl-token')
+  res.setHeader('Access-Control-Max-Age', '86400')
+}
+
 export function withAuth(
   handler: (req: NextApiRequest, res: NextApiResponse, auth: AuthContext) => Promise<void>
 ) {
   return async (req: NextApiRequest, res: NextApiResponse) => {
+    setCorsHeaders(req, res)
+
     // Handle CORS preflight — must return 2xx before auth check.
     if (req.method === 'OPTIONS') {
       res.status(204).end()
