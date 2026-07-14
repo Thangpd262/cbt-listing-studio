@@ -43,6 +43,7 @@ export default withAuth(async (req, res, auth) => {
         product_id: product.id,
         action: 'price_qty',
         payload: { price: item.price, quantity: item.quantity },
+        created_by: auth.user_id,
       })
       .select('id')
       .single()

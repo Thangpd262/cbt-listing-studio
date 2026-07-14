@@ -81,6 +81,7 @@ export default withAuth(async (req, res, auth) => {
         product_id: product.id,
         action: 'create',
         payload: jobPayload,
+        created_by: auth.user_id,
       })
       .select('id')
       .single()

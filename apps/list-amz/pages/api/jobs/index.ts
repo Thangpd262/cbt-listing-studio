@@ -1,8 +1,8 @@
 import { withAuth, createSupabaseClient, error, paginated } from '@cbt/shared'
 
 // GET — paginated list of listing jobs (filter by status / selling_account_id).
-// Embeds the linked product's SKU + title via the product_id FK so the UI can
-// show a real SKU instead of digging through the job payload.
+// Embeds the linked product (SKU + title via product_id FK) and the creating
+// user's email (via created_by FK) so the UI shows real SKU + author.
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')
 
@@ -13,7 +13,7 @@ export default withAuth(async (req, res, auth) => {
 
   let query = supabase
     .from('amz_listing_jobs')
-    .select('*, product:amz_products(sku, title)', { count: 'exact' })
+    .select('*, product:amz_products(sku, title), creator:app_users!created_by(email)', { count: 'exact' })
     .eq('account_id', auth.account_id)
     .order('created_at', { ascending: false })
     .range(from, from + limit - 1)
@@ -23,17 +23,17 @@ export default withAuth(async (req, res, auth) => {
   const { data, error: dbError, count } = await query
   if (dbError) return error(res, 500, dbError.message)
 
-  // Flatten the embedded product onto the job + expose sku / created_by_email.
-  // created_by_email is null until amz_listing_jobs carries a creator column.
+  // Flatten the embedded product + creator onto the job (sku / created_by_email).
   const rows = (data ?? []).map((row) => {
-    const { product, ...job } = row as typeof row & {
+    const { product, creator, ...job } = row as typeof row & {
       product: { sku: string; title: string } | null
+      creator: { email: string } | null
     }
     return {
       ...job,
       sku: product?.sku ?? null,
       product_title: product?.title ?? null,
-      created_by_email: null as string | null,
+      created_by_email: creator?.email ?? null,
     }
   })
 
