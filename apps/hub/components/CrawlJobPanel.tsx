@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
-import { SYSTEM_CONFIGS, SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
+import { SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
 
 type GalleryImage = { id: string; url: string; ai?: boolean }
 
@@ -91,10 +91,9 @@ export default function CrawlJobPanel({
     return () => clearTimeout(t)
   }, [title, apiKey, listing.id])
 
+  // Only user configs are selectable now; resolve to the base product_configs key.
   function resolveConfigKey(sel: string): string | null {
-    const mine = myConfigs.find((c) => c.id === sel)
-    if (mine) return mine.from
-    return SYSTEM_CONFIGS.some((s) => s.key === sel) ? sel : null
+    return myConfigs.find((c) => c.id === sel)?.from ?? null
   }
 
   function delImg(id: string) {
@@ -411,19 +410,26 @@ export default function CrawlJobPanel({
       <div className="flex flex-col gap-2.5">
         <div>
           <div className="mb-1 text-[11px] text-muted">Dòng hàng</div>
-          <select value={config} onChange={(e) => setConfig(e.target.value)} className="field w-full">
-            <option value="">— Chọn config —</option>
-            {myConfigs.length > 0
-              ? myConfigs.map((c) => (
+          <select
+            value={config}
+            onChange={(e) => setConfig(e.target.value)}
+            disabled={myConfigs.length === 0}
+            className="field w-full"
+          >
+            {myConfigs.length > 0 ? (
+              <>
+                <option value="">— Chọn config —</option>
+                {myConfigs.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} (từ {c.from})
                   </option>
-                ))
-              : SYSTEM_CONFIGS.map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.key} — {c.label}
-                  </option>
                 ))}
+              </>
+            ) : (
+              <option value="" disabled>
+                Chưa có config — tạo trong tab Configs
+              </option>
+            )}
           </select>
         </div>
 
