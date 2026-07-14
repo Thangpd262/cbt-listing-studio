@@ -1,45 +1,62 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CloudDownload, RefreshCw } from 'lucide-react'
+import { RefreshCw, RotateCw, Loader2 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { SkeletonRows } from '../../components/Skeleton'
 import { useAuth } from '../../lib/auth-context'
-import { listAmzApi, serviceConfigured, type AmzProduct } from '../../lib/api'
+import { listAmzApi, serviceConfigured, type AmzCachedListing } from '../../lib/api'
 
-// Sample Amazon listings — shown only in local dev (list-amz not wired).
-const SAMPLE: AmzProduct[] = [
+// Sample listings — shown only in local dev (no API key).
+const SAMPLE: AmzCachedListing[] = [
   {
     id: 's1',
+    marketplace_id: 'ATVPDKIKX0DER',
+    asin: 'B0CXXX001',
     sku: 'SHIRT-042',
     title: 'Boho Floral Women Tee Cotton Soft Unisex',
-    asin: 'B0CXXX001',
-    status: 'active',
-    product_type: 'SHIRT',
-    created_at: '',
+    status: 'BUYABLE',
+    price: 21.99,
+    quantity: 120,
+    image_url: null,
+    synced_at: '',
   },
   {
     id: 's2',
+    marketplace_id: 'ATVPDKIKX0DER',
+    asin: 'B0CXXX002',
     sku: 'MUG-007',
     title: 'Rose Ceramic Mug 11oz Boho Flower Gift',
-    asin: null,
-    status: 'inactive',
-    product_type: 'MUG',
-    created_at: '',
+    status: 'DISCOVERABLE',
+    price: 14.5,
+    quantity: 0,
+    image_url: null,
+    synced_at: '',
   },
 ]
 
-const USE_SAMPLE = !serviceConfigured.listAmz
+// "lúc 14:05 · 14/07/2026" from an ISO timestamp.
+function syncedLabel(iso: string | null): string {
+  if (!iso) return 'chưa đồng bộ'
+  const d = new Date(iso)
+  const t = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return `lúc ${t} · ${d.toLocaleDateString('vi-VN')}`
+}
 
 export default function ListAmzPage() {
   const { apiKey } = useAuth()
-  const [rows, setRows] = useState<AmzProduct[]>(USE_SAMPLE ? SAMPLE : [])
-  const [loaded, setLoaded] = useState(USE_SAMPLE)
+  const useSample = !apiKey
+  const canSync = serviceConfigured.listAmz && !!apiKey
+
+  const [rows, setRows] = useState<AmzCachedListing[]>(useSample ? SAMPLE : [])
+  const [syncedAt, setSyncedAt] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(useSample)
   const [loading, setLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [type, setType] = useState('')
 
   const load = useCallback(async () => {
-    if (USE_SAMPLE || !apiKey) {
+    if (useSample) {
       setRows(SAMPLE)
       setLoaded(true)
       return
@@ -47,31 +64,49 @@ export default function ListAmzPage() {
     setLoading(true)
     setErrorMsg(null)
     try {
-      setRows(await listAmzApi.getProducts(apiKey))
+      const { listings, last_synced_at } = await listAmzApi.getCachedListings(apiKey!)
+      setRows(listings)
+      setSyncedAt(last_synced_at)
     } catch (e) {
       setRows([])
-      setErrorMsg(e instanceof Error ? e.message : 'Không tải được sản phẩm')
+      setErrorMsg(e instanceof Error ? e.message : 'Không tải được listing')
     } finally {
       setLoaded(true)
       setLoading(false)
     }
-  }, [apiKey])
+  }, [apiKey, useSample])
 
   useEffect(() => {
     load()
   }, [load])
 
-  const types = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.product_type).filter(Boolean))) as string[],
-    [rows]
+  async function sync() {
+    if (!canSync) return
+    setSyncing(true)
+    setSyncMsg(null)
+    setErrorMsg(null)
+    try {
+      const r = await listAmzApi.syncListings(apiKey!)
+      await load()
+      const errNote = r.errors.length ? ` · ${r.errors.length} tài khoản lỗi` : ''
+      setSyncMsg(`Đã đồng bộ ${r.synced} listing${errNote}`)
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Đồng bộ thất bại')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const shown = useMemo(
+    () =>
+      rows.filter((r) =>
+        search
+          ? `${r.sku ?? ''} ${r.title ?? ''} ${r.asin}`.toLowerCase().includes(search.toLowerCase())
+          : true
+      ),
+    [rows, search]
   )
-  const shown = rows.filter((r) => {
-    if (type && r.product_type !== type) return false
-    if (search && !`${r.sku} ${r.title} ${r.asin ?? ''}`.toLowerCase().includes(search.toLowerCase()))
-      return false
-    return true
-  })
-  const showSkeleton = !loaded && !USE_SAMPLE
+  const showSkeleton = !loaded && !useSample
 
   return (
     <Layout title="Listing trên Amazon">
@@ -82,25 +117,30 @@ export default function ListAmzPage() {
           placeholder="SKU / tiêu đề / ASIN…"
           className="field flex-1"
         />
-        <select value={type} onChange={(e) => setType(e.target.value)} className="field">
-          <option value="">Tất cả type</option>
-          {types.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <button className="btn">
-          <CloudDownload size={13} /> Đồng bộ ngay
+        <button onClick={sync} disabled={!canSync || syncing} className="btn btn-acc" title="Đồng bộ từ Amazon">
+          {syncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />} Đồng bộ
         </button>
-        <button onClick={load} disabled={loading} className="btn">
+        <button onClick={load} disabled={loading} className="btn" title="Tải lại từ cache">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
-      {USE_SAMPLE && (
+      {/* Sync freshness + result */}
+      <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+        <span>
+          {rows.length} listing · đồng bộ {syncedLabel(syncedAt)}
+        </span>
+        {syncMsg && <span className="text-ok">✓ {syncMsg}</span>}
+      </div>
+
+      {useSample && (
         <div className="mb-2.5 rounded-md border border-line bg-panel2 px-3 py-2 text-[11px] text-muted">
-          Dữ liệu mẫu — kết nối list-amz service + API key để xem sản phẩm thật.
+          Dữ liệu mẫu — đăng nhập + đồng bộ để xem listing thật.
+        </div>
+      )}
+      {!useSample && !serviceConfigured.listAmz && (
+        <div className="mb-2.5 rounded-md border border-line bg-panel2 px-3 py-2 text-[11px] text-muted">
+          Chưa cấu hình list-amz service (NEXT_PUBLIC_LIST_AMZ_URL) — nút Đồng bộ bị tắt.
         </div>
       )}
       {errorMsg && (
@@ -112,9 +152,9 @@ export default function ListAmzPage() {
       <table className="w-full text-xs">
         <thead>
           <tr className="text-muted">
-            {['', 'SKU', 'Tiêu đề', 'ASIN', 'Type', 'Trạng thái', 'Hành động'].map((h, i) => (
+            {['', 'SKU', 'Tiêu đề', 'ASIN', 'Giá', 'Tồn', 'Trạng thái'].map((h, i) => (
               <th key={i} className="border-b border-line px-2 py-1.5 text-left font-normal">
-                {i === 0 ? <input type="checkbox" /> : h}
+                {h}
               </th>
             ))}
           </tr>
@@ -125,33 +165,30 @@ export default function ListAmzPage() {
             shown.map((r) => (
               <tr key={r.id} className="hover:bg-panel2">
                 <td className="border-b border-line px-2 py-1.5">
-                  <input type="checkbox" />
+                  {r.image_url ? (
+                    <img src={r.image_url} alt="" className="h-8 w-8 rounded object-cover" />
+                  ) : (
+                    <div className="h-8 w-8 rounded bg-panel2" />
+                  )}
                 </td>
-                <td className="border-b border-line px-2 py-1.5 font-mono text-[11px]">{r.sku}</td>
-                <td className="max-w-[200px] truncate border-b border-line px-2 py-1.5">{r.title}</td>
-                <td
-                  className={`border-b border-line px-2 py-1.5 font-mono text-[11px] ${
-                    r.asin ? 'text-brand' : 'text-muted'
-                  }`}
-                >
-                  {r.asin ?? '—'}
+                <td className="border-b border-line px-2 py-1.5 font-mono text-[11px]">{r.sku ?? '—'}</td>
+                <td className="max-w-[220px] truncate border-b border-line px-2 py-1.5">{r.title ?? '—'}</td>
+                <td className="border-b border-line px-2 py-1.5 font-mono text-[11px] text-brand">{r.asin}</td>
+                <td className="border-b border-line px-2 py-1.5">
+                  {r.price != null ? `$${r.price}` : '—'}
+                </td>
+                <td className={`border-b border-line px-2 py-1.5 ${r.quantity === 0 ? 'text-danger' : ''}`}>
+                  {r.quantity ?? '—'}
                 </td>
                 <td className="border-b border-line px-2 py-1.5">
-                  <span className="badge b-mu">{r.product_type ?? '—'}</span>
-                </td>
-                <td className="border-b border-line px-2 py-1.5">
-                  <span className={`badge ${r.status === 'active' ? 'b-ok' : 'b-er'}`}>{r.status}</span>
-                </td>
-                <td className="whitespace-nowrap border-b border-line px-2 py-1.5">
-                  <button className="btn !text-[11px]">Sửa</button>{' '}
-                  <button className="btn btn-danger !text-[11px]">Xoá</button>
+                  <span className="badge b-mu">{r.status ?? '—'}</span>
                 </td>
               </tr>
             ))}
           {!showSkeleton && shown.length === 0 && !errorMsg && (
             <tr>
               <td colSpan={7} className="px-2 py-10 text-center text-xs text-muted">
-                {rows.length === 0 ? 'Chưa có sản phẩm nào.' : 'Không có sản phẩm khớp bộ lọc.'}
+                {rows.length === 0 ? 'Chưa có listing nào — bấm Đồng bộ để tải từ Amazon.' : 'Không khớp bộ lọc.'}
               </td>
             </tr>
           )}

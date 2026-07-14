@@ -19,6 +19,22 @@ export type WmtProduct = {
   shipping_node?: string
 }
 
+// Shape of the getAllItems response we consume (partial).
+export type WmtItem = {
+  sku?: string
+  wpid?: string
+  productName?: string
+  publishedStatus?: string
+  lifecycleStatus?: string
+  price?: { amount?: number }
+  primaryImageUrl?: string
+}
+export type GetAllItemsResponse = {
+  ItemResponse?: WmtItem[]
+  nextCursor?: string
+  totalItems?: number
+}
+
 export class WalmartApiClient {
   constructor(private token: string) {}
 
@@ -39,6 +55,16 @@ export class WalmartApiClient {
 
   getItemStatus(sku: string) {
     return this.request('GET', `/items/${encodeURIComponent(sku)}`)
+  }
+
+  // getAllItems — one page of the seller's items. Paginate via the returned
+  // nextCursor (start with '*'). Walmart may return nextCursor as an opaque
+  // token or as a full query fragment beginning with '?'; support both.
+  getAllItems(nextCursor?: string) {
+    const path = nextCursor?.startsWith('?')
+      ? `/items${nextCursor}`
+      : `/items?${new URLSearchParams({ limit: '50', nextCursor: nextCursor ?? '*' })}`
+    return this.request('GET', path) as Promise<GetAllItemsResponse>
   }
 
   retireItem(sku: string) {

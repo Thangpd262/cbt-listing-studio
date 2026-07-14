@@ -13,6 +13,24 @@ export type ListingPayload = {
   attributes?: Record<string, unknown>
 }
 
+// Shape of the searchListingsItems response we consume (partial).
+export type SearchListingsItem = {
+  sku?: string
+  summaries?: Array<{
+    asin?: string
+    itemName?: string
+    status?: string[] | string
+    mainImage?: { link?: string }
+  }>
+  offers?: Array<{ price?: { amount?: number } }>
+  fulfillmentAvailability?: Array<{ quantity?: number }>
+}
+export type SearchListingsResponse = {
+  numberOfResults?: number
+  pagination?: { nextToken?: string }
+  items?: SearchListingsItem[]
+}
+
 export class SpApiClient {
   constructor(private accessToken: string, private marketplaceId: string) {}
 
@@ -26,6 +44,18 @@ export class SpApiClient {
 
   patchListing(sellerId: string, sku: string, patches: object[]) {
     return this.request('PATCH', this.itemPath(sellerId, sku), { productType: 'PRODUCT', patches })
+  }
+
+  // searchListingsItems — all listings for a seller in this marketplace, one
+  // page (max pageSize 20). Paginate via the returned pagination.nextToken.
+  searchListings(sellerId: string, pageToken?: string) {
+    const params = new URLSearchParams({
+      marketplaceIds: this.marketplaceId,
+      includedData: 'summaries,offers,fulfillmentAvailability',
+      pageSize: '20',
+    })
+    if (pageToken) params.set('pageToken', pageToken)
+    return this.request('GET', `/listings/2021-08-01/items/${sellerId}?${params}`) as Promise<SearchListingsResponse>
   }
 
   private itemPath(sellerId: string, sku: string) {

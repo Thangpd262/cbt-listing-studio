@@ -339,11 +339,54 @@ export type AmzProduct = {
   created_at: string
 }
 
+// A cached live Amazon listing (from amz_listings_cache via the hub-local route).
+export type AmzCachedListing = {
+  id: string
+  marketplace_id: string
+  asin: string
+  sku: string | null
+  title: string | null
+  status: string | null
+  price: number | null
+  quantity: number | null
+  image_url: string | null
+  synced_at: string
+}
+
+// A cached live Walmart listing (from wmt_listings_cache).
+export type WmtCachedListing = {
+  id: string
+  sku: string
+  wpid: string | null
+  title: string | null
+  status: string | null
+  price: number | null
+  quantity: number | null
+  image_url: string | null
+  synced_at: string
+}
+
+export type CachedListings<T> = { listings: T[]; last_synced_at: string | null; total_count: number }
+export type SyncResult = { synced: number; duration_ms: number; accounts: number; errors: string[] }
+
 export const listAmzApi = {
   async getProducts(apiKey: string, params: { status?: string } = {}) {
     const q = params.status ? `?status=${encodeURIComponent(params.status)}` : ''
     const res = await fetch(`${LIST_AMZ_URL}/api/products${q}`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<AmzProduct[]>(res)
+  },
+  // Cached live listings — read from Supabase via the hub-local route.
+  async getCachedListings(apiKey: string) {
+    const res = await fetch('/api/amz-listings', { headers: apiKeyHeaders(apiKey) })
+    return unwrap<CachedListings<AmzCachedListing>>(res)
+  },
+  // Trigger a full SP-API → cache sync (list-amz service).
+  async syncListings(apiKey: string) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/listings/sync`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<SyncResult>(res)
   },
   async getJobs(apiKey: string, params: { status?: string; page?: number; limit?: number } = {}) {
     const q = new URLSearchParams()
@@ -375,6 +418,17 @@ export const listWmtApi = {
   async getProducts(apiKey: string) {
     const res = await fetch(`${LIST_WMT_URL}/api/products`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<Array<Record<string, unknown>>>(res)
+  },
+  async getCachedListings(apiKey: string) {
+    const res = await fetch('/api/wmt-listings', { headers: apiKeyHeaders(apiKey) })
+    return unwrap<CachedListings<WmtCachedListing>>(res)
+  },
+  async syncListings(apiKey: string) {
+    const res = await fetch(`${LIST_WMT_URL}/api/listings/sync`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<SyncResult>(res)
   },
 }
 
