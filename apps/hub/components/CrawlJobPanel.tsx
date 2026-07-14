@@ -287,19 +287,19 @@ export default function CrawlJobPanel({
           <span className="grid h-6 w-6 place-items-center rounded-full bg-panel2 text-muted">
             <User size={13} />
           </span>
-          <span className="truncate text-muted">{listing.username ?? '—'}</span>
+          <span className="truncate text-sm text-muted">{listing.username ?? '—'}</span>
         </div>
         {listing.email && (
-          <div className="truncate text-[11px] text-brand" title={listing.email}>
+          <div className="truncate text-sm text-brand" title={listing.email}>
             {listing.email}
           </div>
         )}
-        <div className="font-medium text-fg">{listing.shop}</div>
+        <div className="text-sm font-semibold text-fg">{listing.shop}</div>
         {listing.etsyId && <div className="font-mono text-[11px] text-muted">{listing.etsyId}</div>}
-        <span className={`badge w-fit ${listing.hasJob ? 'b-ok' : 'b-mu'}`}>
+        <span className={`badge w-fit text-sm ${listing.hasJob ? 'b-ok' : 'b-mu'}`}>
           {listing.hasJob ? '✓ Đã tạo job' : 'Chưa tạo job'}
         </span>
-        {listing.createdAt && <div className="text-[11px] text-muted">{listing.createdAt}</div>}
+        {listing.createdAt && <div className="text-sm text-muted">{listing.createdAt}</div>}
       </div>
 
       {/* ── Middle: title + images ── */}
@@ -319,8 +319,8 @@ export default function CrawlJobPanel({
         </div>
 
         {/* Etsy images (all, no limit) */}
-        <div className="mb-1 text-[11px] font-medium text-fg">
-          Ảnh Etsy <span className="text-muted">({etsyImages.length})</span>
+        <div className="mb-1 text-sm font-medium text-fg">
+          Ảnh Etsy <span className="text-xs text-muted">({etsyImages.length})</span>
         </div>
         {etsyImages.length ? (
           <>
@@ -338,8 +338,8 @@ export default function CrawlJobPanel({
         )}
 
         {/* AI images */}
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-fg">
-          <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-muted">({aiImages.length})</span>
+        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-fg">
+          <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-xs text-muted">({aiImages.length})</span>
         </div>
         {aiImages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
@@ -372,7 +372,7 @@ export default function CrawlJobPanel({
 
         {/* Tags → mapped to search_term on the job */}
         <div className="mb-3">
-          <div className="mb-1 text-[11px] font-medium text-fg">Tags / Search term</div>
+          <div className="mb-1 text-sm font-medium text-fg">Tags / Search term</div>
           <textarea
             value={tags}
             onChange={(e) => setTags(e.target.value)}
@@ -382,8 +382,8 @@ export default function CrawlJobPanel({
         </div>
 
         {/* config default images (read-only) */}
-        <div className="mb-1 text-[11px] font-medium text-fg">
-          Ảnh mặc định (config) <span className="text-muted">({configImages.length})</span>
+        <div className="mb-1 text-sm font-medium text-fg">
+          Ảnh mặc định (config) <span className="text-xs text-muted">({configImages.length})</span>
         </div>
         {configImages.length ? (
           <div className="flex flex-wrap gap-2">
@@ -409,7 +409,7 @@ export default function CrawlJobPanel({
       {/* ── Right: config + actions ── */}
       <div className="flex flex-col gap-2.5">
         <div>
-          <div className="mb-1 text-[11px] text-muted">Dòng hàng</div>
+          <div className="mb-1 text-sm text-muted">Dòng hàng</div>
           <select
             value={config}
             onChange={(e) => setConfig(e.target.value)}
@@ -441,7 +441,7 @@ export default function CrawlJobPanel({
             className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-brand"
           />
           <span className="text-[11px] text-muted">
-            <span className="text-fg">AI viết mô tả</span> — tối ưu keyword từ title + ảnh + search term. Bỏ trống = dùng mô tả trong config.
+            <span className="text-sm font-medium text-fg">AI viết mô tả</span> — tối ưu keyword từ title + ảnh + search term. Bỏ trống = dùng mô tả trong config.
           </span>
         </label>
 
