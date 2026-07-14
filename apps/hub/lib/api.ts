@@ -207,8 +207,16 @@ export type PromptTemplate = {
   platform: string | null
   prompt_type: 'image' | 'title' | 'description'
   content: string
+  model: string | null
   is_default: boolean
   created_at: string
+}
+
+export type PromptInput = {
+  name: string
+  content: string
+  prompt_type: string
+  model?: string | null
 }
 
 export type GenImage = { id: string | null; url: string; expires_at: string | null }
@@ -221,6 +229,29 @@ export const generatorApi = {
   async getPrompts(apiKey: string) {
     const res = await fetch(`${GENERATOR_URL}/api/prompts`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<PromptTemplate[]>(res)
+  },
+  async createPrompt(apiKey: string, body: PromptInput) {
+    const res = await fetch(`${GENERATOR_URL}/api/prompts`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<PromptTemplate>(res)
+  },
+  async updatePrompt(apiKey: string, id: string, body: Partial<PromptInput>) {
+    const res = await fetch(`${GENERATOR_URL}/api/prompts/${id}`, {
+      method: 'PUT',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<PromptTemplate>(res)
+  },
+  async removePrompt(apiKey: string, id: string) {
+    const res = await fetch(`${GENERATOR_URL}/api/prompts/${id}`, {
+      method: 'DELETE',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<{ id: string; deleted: boolean }>(res)
   },
   // Generate one image from a prompt template (append to the panel gallery).
   async generateImage(apiKey: string, body: { listing_id: string; prompt_id: string; platform?: string }) {

@@ -27,7 +27,7 @@ type NavGroup = { title: string; items: NavItem[] }
 
 const COMMON: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/soon/prompt-ai', label: 'Prompt ảnh AI', icon: Sparkles },
+  { href: '/prompt-ai', label: 'Prompt ảnh AI', icon: Sparkles },
 ]
 
 const AMAZON: NavItem[] = [

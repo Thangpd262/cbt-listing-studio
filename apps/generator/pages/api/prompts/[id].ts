@@ -7,12 +7,13 @@ export default withAuth(async (req, res, auth) => {
   const id = req.query.id as string
 
   if (req.method === 'PUT') {
-    const { name, content, is_default, platform } = req.body ?? {}
+    const { name, content, is_default, platform, model } = req.body ?? {}
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (name !== undefined) patch.name = name
     if (content !== undefined) patch.content = content
     if (is_default !== undefined) patch.is_default = !!is_default
     if (platform !== undefined) patch.platform = platform
+    if (model !== undefined) patch.model = model
 
     const { data, error: dbError } = await supabase
       .from('prompt_templates')

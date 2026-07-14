@@ -1,0 +1,225 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Save, Pencil, Trash2, RefreshCw, Loader2, X } from 'lucide-react'
+import Layout from '../components/Layout'
+import { useAuth } from '../lib/auth-context'
+import { generatorApi, type PromptTemplate } from '../lib/api'
+
+const MODELS = ['gpt-image-1', 'gemini-2.5-flash-image']
+
+// prompt_templates.prompt_type is image|title|description; the UI offers
+// "image" and "text" (mapped to description) per the product spec.
+const TYPES: { value: string; label: string }[] = [
+  { value: 'image', label: 'Ảnh (image)' },
+  { value: 'description', label: 'Text / mô tả' },
+]
+
+type FormState = {
+  id: string | null
+  name: string
+  model: string
+  content: string
+  prompt_type: string
+}
+
+const EMPTY: FormState = { id: null, name: '', model: MODELS[0], content: '', prompt_type: 'image' }
+
+const SAMPLE: PromptTemplate[] = [
+  { id: 's1', name: 'Canvas tối giản nền trắng', platform: null, prompt_type: 'image', content: 'minimalist canvas, white background…', model: 'gpt-image-1', is_default: false, created_at: '' },
+  { id: 's2', name: 'Boho floral watercolor', platform: null, prompt_type: 'image', content: 'boho floral watercolor style…', model: 'gemini-2.5-flash-image', is_default: false, created_at: '' },
+]
+
+const typeLabel = (t: string) => TYPES.find((x) => x.value === t)?.label ?? t
+
+export default function PromptAiPage() {
+  const { apiKey } = useAuth()
+  const [prompts, setPrompts] = useState<PromptTemplate[]>(SAMPLE)
+  const [usingSample, setUsingSample] = useState(true)
+  const [form, setForm] = useState<FormState>(EMPTY)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!apiKey) {
+      setPrompts(SAMPLE)
+      setUsingSample(true)
+      return
+    }
+    setLoading(true)
+    try {
+      const rows = await generatorApi.getPrompts(apiKey)
+      setPrompts(rows)
+      setUsingSample(false)
+    } catch {
+      setPrompts(SAMPLE)
+      setUsingSample(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [apiKey])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function save() {
+    if (!form.name.trim() || !form.content.trim()) {
+      alert('Nhập tên và nội dung prompt.')
+      return
+    }
+    if (!apiKey || usingSample) {
+      alert('Cần API key để lưu prompt thật.')
+      return
+    }
+    setSaving(true)
+    try {
+      const body = { name: form.name, content: form.content, prompt_type: form.prompt_type, model: form.model }
+      if (form.id) await generatorApi.updatePrompt(apiKey, form.id, body)
+      else await generatorApi.createPrompt(apiKey, body)
+      setForm(EMPTY)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Lưu thất bại')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function edit(p: PromptTemplate) {
+    setForm({ id: p.id, name: p.name, model: p.model ?? MODELS[0], content: p.content, prompt_type: p.prompt_type })
+  }
+
+  async function remove(id: string) {
+    if (!apiKey || usingSample) {
+      setPrompts((ps) => ps.filter((p) => p.id !== id))
+      return
+    }
+    if (!confirm('Xoá prompt này?')) return
+    try {
+      await generatorApi.removePrompt(apiKey, id)
+      if (form.id === id) setForm(EMPTY)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Xoá thất bại')
+    }
+  }
+
+  return (
+    <Layout title="Prompt ảnh AI">
+      {usingSample && (
+        <div className="mb-2.5 rounded-md border border-line bg-panel2 px-3 py-2 text-[11px] text-muted">
+          Dữ liệu mẫu — kết nối generator service + API key để quản lý prompt thật.
+        </div>
+      )}
+
+      {/* Form */}
+      <div className="card mb-3">
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+          {form.id ? 'Sửa prompt' : 'Prompt mới'}
+          {form.id && (
+            <button onClick={() => setForm(EMPTY)} className="ml-auto flex items-center gap-1 text-[11px] text-muted hover:text-fg">
+              <X size={12} /> huỷ sửa
+            </button>
+          )}
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div>
+            <div className="mb-1 text-[11px] text-muted">Tên prompt</div>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="VD: Canvas tối giản nền trắng"
+              className="field w-full"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <div className="mb-1 text-[11px] text-muted">Model</div>
+              <select value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="field w-full">
+                {MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] text-muted">Loại</div>
+              <select
+                value={form.prompt_type}
+                onChange={(e) => setForm({ ...form, prompt_type: e.target.value })}
+                className="field w-full"
+              >
+                {TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="mt-2">
+          <div className="mb-1 text-[11px] text-muted">Nội dung prompt</div>
+          <textarea
+            value={form.content}
+            onChange={(e) => setForm({ ...form, content: e.target.value })}
+            placeholder="Describe your image style…"
+            className="field min-h-[90px] w-full resize-y"
+          />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <button onClick={save} disabled={saving} className="btn btn-acc">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            {form.id ? 'Cập nhật' : 'Lưu prompt'}
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="mb-1.5 flex items-center">
+        <span className="text-xs text-muted">{prompts.length} prompt</span>
+        <button onClick={load} disabled={loading} className="btn ml-auto !text-[11px]">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Tải lại
+        </button>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-muted">
+            {['Tên', 'Model', 'Loại', 'Nội dung', ''].map((h, i) => (
+              <th key={i} className="border-b border-line px-2 py-1.5 text-left font-normal">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {prompts.map((p) => (
+            <tr key={p.id} className="hover:bg-panel2">
+              <td className="border-b border-line px-2 py-1.5">{p.name}</td>
+              <td className="border-b border-line px-2 py-1.5 text-muted">{p.model ?? '—'}</td>
+              <td className="border-b border-line px-2 py-1.5">
+                <span className="badge b-mu">{typeLabel(p.prompt_type)}</span>
+              </td>
+              <td className="max-w-[280px] truncate border-b border-line px-2 py-1.5 text-muted">{p.content}</td>
+              <td className="whitespace-nowrap border-b border-line px-2 py-1.5">
+                <button onClick={() => edit(p)} className="btn !text-[11px]">
+                  <Pencil size={12} /> Sửa
+                </button>{' '}
+                <button onClick={() => remove(p.id)} className="btn btn-danger !px-2 !py-1 !text-[11px]">
+                  <Trash2 size={12} />
+                </button>
+              </td>
+            </tr>
+          ))}
+          {prompts.length === 0 && (
+            <tr>
+              <td colSpan={5} className="px-2 py-10 text-center text-xs text-muted">
+                {loading ? 'Đang tải…' : 'Chưa có prompt nào.'}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Layout>
+  )
+}

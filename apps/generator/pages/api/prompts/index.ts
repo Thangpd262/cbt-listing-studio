@@ -18,7 +18,7 @@ export default withAuth(async (req, res, auth) => {
   }
 
   if (req.method === 'POST') {
-    const { name, platform, prompt_type, content, is_default } = req.body ?? {}
+    const { name, platform, prompt_type, content, is_default, model } = req.body ?? {}
     if (!name || !prompt_type || !content) {
       return error(res, 400, 'name, prompt_type và content là bắt buộc')
     }
@@ -38,6 +38,7 @@ export default withAuth(async (req, res, auth) => {
         prompt_type,
         content,
         is_default: !!is_default,
+        model: model ?? null,
       })
       .select('*')
       .single()
