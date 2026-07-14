@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Plus, Zap, Eye, Trash2, ImageOff } from 'lucide-react'
 import Layout from '../components/Layout'
-import CrawlJobPanel, { type PanelGroup, type PanelConfig } from '../components/CrawlJobPanel'
+import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } from '../components/CrawlJobPanel'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform } from '../lib/platform-context'
-import { accountApi, crawlApi, productGroupApi, userConfigApi, type SellingAccount } from '../lib/api'
+import { accountApi, crawlApi, generatorApi, productGroupApi, userConfigApi, type SellingAccount } from '../lib/api'
 import { GROUPS, MY_CONFIGS, SAMPLE_LISTINGS, type SampleListing } from '../lib/sample-data'
 
 const SAMPLE_GROUPS: PanelGroup[] = GROUPS.map((g) => ({ id: g.id, name: g.name }))
 const SAMPLE_CONFIGS: PanelConfig[] = MY_CONFIGS.map((c) => ({ id: c.id, name: c.name, from: c.from }))
+const SAMPLE_PROMPTS: PanelPrompt[] = [
+  { id: 'p1', name: 'Canvas tối giản nền trắng' },
+  { id: 'p2', name: 'Boho floral watercolor' },
+]
+
+// Pull image URLs a user stored in their config overrides (for section "d").
+function overrideImages(overrides: Record<string, unknown>): string[] {
+  const v = overrides?.image_urls
+  return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : []
+}
 
 export default function CrawlPage() {
   const { apiKey, token } = useAuth()
@@ -21,6 +31,7 @@ export default function CrawlPage() {
   // Groups + user configs feed the filter bar and the job panel.
   const [groups, setGroups] = useState<PanelGroup[]>(SAMPLE_GROUPS)
   const [myConfigs, setMyConfigs] = useState<PanelConfig[]>(SAMPLE_CONFIGS)
+  const [prompts, setPrompts] = useState<PanelPrompt[]>(SAMPLE_PROMPTS)
   const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
 
   const [group, setGroup] = useState('')
@@ -66,18 +77,25 @@ export default function CrawlPage() {
     if (!apiKey) {
       setGroups(SAMPLE_GROUPS)
       setMyConfigs(SAMPLE_CONFIGS)
+      setPrompts(SAMPLE_PROMPTS)
       return
     }
     try {
-      const [g, c] = await Promise.all([
+      const [g, c, p] = await Promise.all([
         productGroupApi.list(apiKey, platform),
         userConfigApi.list(apiKey),
+        generatorApi.getPrompts(apiKey).catch(() => []),
       ])
       setGroups(g.length ? g.map((x) => ({ id: x.id, name: x.name })) : SAMPLE_GROUPS)
-      setMyConfigs(c.map((x) => ({ id: x.id, name: x.name, from: x.based_on })))
+      setMyConfigs(
+        c.map((x) => ({ id: x.id, name: x.name, from: x.based_on, imageUrls: overrideImages(x.overrides) }))
+      )
+      const imagePrompts = p.filter((x) => x.prompt_type === 'image').map((x) => ({ id: x.id, name: x.name }))
+      setPrompts(imagePrompts.length ? imagePrompts : SAMPLE_PROMPTS)
     } catch {
       setGroups(SAMPLE_GROUPS)
       setMyConfigs(SAMPLE_CONFIGS)
+      setPrompts(SAMPLE_PROMPTS)
     }
     // Selling accounts (for real job creation) use the bearer token.
     if (token) {
@@ -218,6 +236,7 @@ export default function CrawlPage() {
           listing={panelFor}
           groups={groups}
           myConfigs={myConfigs}
+          prompts={prompts}
           sellingAccounts={sellingAccounts}
           apiKey={apiKey}
           platform={platform}

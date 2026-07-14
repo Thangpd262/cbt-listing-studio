@@ -32,6 +32,8 @@ export default withAuth(async (req, res, auth) => {
       config_key, field_values,
       // Legacy flat mode
       title, description, bullet_points, images, price, quantity, product_type, attributes,
+      // Optional: have the generator write the description instead of the config default
+      ai_description,
     } = req.body ?? {}
 
     if (!selling_account_id || !sku) {
@@ -42,10 +44,35 @@ export default withAuth(async (req, res, auth) => {
       return error(res, 400, 'title là bắt buộc (hoặc dùng config_key + field_values)')
     }
 
+    // Working copy of the config values so we can inject an AI description.
+    const fieldValues: Record<string, string> = isConfigMode ? { ...(field_values as Record<string, string>) } : {}
+
     // Derive display title for the product row.
     const displayTitle = isConfigMode
-      ? ((field_values as Record<string, string>)['item_name'] ?? config_key)
+      ? (fieldValues['item_name'] ?? config_key)
       : (title as string)
+
+    // AI viết mô tả: ask the generator for a description from the title.
+    // Best-effort — on any failure we fall back to the config default.
+    if (isConfigMode && ai_description) {
+      const genUrl = process.env.GENERATOR_SERVICE_URL
+      const apiKey = req.headers['x-api-key'] as string
+      if (genUrl && apiKey) {
+        try {
+          const r = await fetch(`${genUrl}/api/generate-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+            body: JSON.stringify({ kind: 'description', title: displayTitle, platform: 'amazon' }),
+          })
+          const body = await r.json().catch(() => null)
+          if (r.ok && body?.success && body.data?.text) {
+            fieldValues['product_description'] = body.data.text as string
+          }
+        } catch {
+          // ignore — keep the config's default description
+        }
+      }
+    }
 
     // 1. Product row (draft).
     const { data: product, error: prodError } = await supabase
@@ -61,7 +88,7 @@ export default withAuth(async (req, res, auth) => {
         price: isConfigMode ? null : (price ?? null),
         quantity: isConfigMode ? 0 : (quantity ?? 0),
         product_type: isConfigMode ? (config_key as string) : (product_type ?? null),
-        attributes: isConfigMode ? (field_values ?? {}) : (attributes ?? {}),
+        attributes: isConfigMode ? fieldValues : (attributes ?? {}),
         status: 'draft',
       })
       .select('id')
@@ -70,7 +97,7 @@ export default withAuth(async (req, res, auth) => {
 
     // 2. Create job — payload differs by mode.
     const jobPayload = isConfigMode
-      ? { config_key, field_values }
+      ? { config_key, field_values: fieldValues }
       : { title, description, bullet_points, images, price, quantity, product_type, attributes }
 
     const { data: job, error: jobError } = await supabase

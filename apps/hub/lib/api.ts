@@ -201,10 +201,35 @@ export const crawlApi = {
   },
 }
 
+export type PromptTemplate = {
+  id: string
+  name: string
+  platform: string | null
+  prompt_type: 'image' | 'title' | 'description'
+  content: string
+  is_default: boolean
+  created_at: string
+}
+
+export type GenImage = { id: string | null; url: string; expires_at: string | null }
+
 export const generatorApi = {
   async getJobs(apiKey: string) {
     const res = await fetch(`${GENERATOR_URL}/api/jobs`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<Array<Record<string, unknown>>>(res)
+  },
+  async getPrompts(apiKey: string) {
+    const res = await fetch(`${GENERATOR_URL}/api/prompts`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<PromptTemplate[]>(res)
+  },
+  // Generate one image from a prompt template (append to the panel gallery).
+  async generateImage(apiKey: string, body: { listing_id: string; prompt_id: string; platform?: string }) {
+    const res = await fetch(`${GENERATOR_URL}/api/generate-image`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<GenImage>(res)
   },
 }
 

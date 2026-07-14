@@ -42,6 +42,14 @@ export async function generateDescription(scene: SceneAnalysis, platform: string
   )
 }
 
+// Description straight from a product title (no scene analysis needed) — used
+// when a listing is created with the "AI viết mô tả" flag.
+export async function generateDescriptionFromTitle(title: string, platform: string): Promise<TextResult> {
+  return genText(
+    `Write a compelling ${platform} product description (2-4 short paragraphs, no markdown) for a product titled "${title}". Return ONLY the description.`
+  )
+}
+
 // Image-generation prompt tuned per platform (Amazon: white-bg product shot;
 // Walmart: lifestyle shot in the given variant color).
 export async function generateImagePrompt(
