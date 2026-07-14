@@ -265,7 +265,13 @@ export const generatorApi = {
   // Generate one image from a prompt template (append to the panel gallery).
   async generateImage(
     apiKey: string,
-    body: { listing_id: string; prompt_id: string; platform?: string; model?: string }
+    body: {
+      listing_id: string
+      prompt_id: string
+      platform?: string
+      model?: string
+      reference_image_url?: string
+    }
   ) {
     const res = await fetch(`${GENERATOR_URL}/api/generate-image`, {
       method: 'POST',

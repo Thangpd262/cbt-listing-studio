@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Sparkles, Zap, Loader2, RotateCw, Trash2, User } from 'lucide-react'
+import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
 import { SYSTEM_CONFIGS, SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
 
@@ -43,6 +43,8 @@ export default function CrawlJobPanel({
     () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...SAMPLE_AI_IMAGES.map((_, i) => `ai-${i}`)])
   )
   const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
+  // Single Etsy image used as the AI style reference (radio behavior).
+  const [refImageId, setRefImageId] = useState<string | null>(null)
   // (a) editable SKU + price
   const [sku, setSku] = useState(
     () => `${(listing.group || 'ITEM').slice(0, 5).toUpperCase().replace(/\s/g, '')}-${String(index + 1).padStart(3, '0')}`
@@ -104,6 +106,7 @@ export default function CrawlJobPanel({
       return n
     })
     if (mainId === id) setMainId(null)
+    if (refImageId === id) setRefImageId(null)
   }
 
   function toggleSelected(id: string) {
@@ -118,11 +121,14 @@ export default function CrawlJobPanel({
   async function genOne(): Promise<string> {
     if (!apiKey) throw new Error('Cần API key')
     if (!promptId) throw new Error('Chọn prompt')
+    // Style reference: the selected Etsy image (if any) → img2img.
+    const referenceUrl = refImageId ? images.find((i) => i.id === refImageId)?.url : undefined
     const r = await generatorApi.generateImage(apiKey, {
       listing_id: listing.id,
       prompt_id: promptId,
       platform,
       model,
+      reference_image_url: referenceUrl,
     })
     return r.url
   }
@@ -194,9 +200,10 @@ export default function CrawlJobPanel({
     onCreated()
   }
 
-  function Thumb({ img, canRegen }: { img: GalleryImage; canRegen?: boolean }) {
+  function Thumb({ img, canRegen, canRef }: { img: GalleryImage; canRegen?: boolean; canRef?: boolean }) {
     const isMain = mainId === img.id
     const isSel = selected.has(img.id)
+    const isRef = refImageId === img.id
     return (
       <div className="relative h-[76px] w-[76px] flex-shrink-0">
         <img
@@ -204,7 +211,7 @@ export default function CrawlJobPanel({
           alt=""
           className={`h-[76px] w-[76px] rounded-md border-2 object-cover ${
             isMain ? 'border-brand' : isSel ? 'border-line' : 'border-transparent opacity-50'
-          }`}
+          } ${isRef ? 'ring-2 ring-purple-400' : ''}`}
         />
         <input
           type="checkbox"
@@ -221,6 +228,15 @@ export default function CrawlJobPanel({
           ×
         </button>
         <div className="absolute bottom-0.5 right-0.5 flex gap-0.5">
+          {canRef && (
+            <button
+              onClick={() => setRefImageId(isRef ? null : img.id)}
+              title="Dùng ảnh này làm tham chiếu cho AI gen"
+              className={`rounded bg-black/65 px-1 leading-none ${isRef ? 'text-purple-300' : 'text-muted'}`}
+            >
+              <Crosshair size={11} />
+            </button>
+          )}
           {canRegen && (
             <button
               onClick={() => regen(img.id)}
@@ -239,11 +255,15 @@ export default function CrawlJobPanel({
             ★
           </button>
         </div>
-        {isMain && (
+        {isMain ? (
           <div className="absolute inset-x-0 bottom-0 rounded-b bg-brand-soft py-px text-center text-[9px] text-brand">
             main
           </div>
-        )}
+        ) : isRef ? (
+          <div className="absolute inset-x-0 bottom-0 rounded-b bg-purple-500/20 py-px text-center text-[9px] text-purple-300">
+            Tham chiếu AI
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -285,11 +305,16 @@ export default function CrawlJobPanel({
           Ảnh Etsy <span className="text-muted">({etsyImages.length})</span>
         </div>
         {etsyImages.length ? (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {etsyImages.map((img) => (
-              <Thumb key={img.id} img={img} />
-            ))}
-          </div>
+          <>
+            <div className="flex flex-wrap gap-2">
+              {etsyImages.map((img) => (
+                <Thumb key={img.id} img={img} canRef />
+              ))}
+            </div>
+            <div className="mb-3 mt-1 flex items-center gap-1 text-[10px] text-muted">
+              <Crosshair size={10} className="text-purple-300" /> Chọn ảnh tham chiếu để gen theo phong cách ảnh đó
+            </div>
+          </>
         ) : (
           <div className="mb-3 text-[11px] text-muted">Không có ảnh Etsy.</div>
         )}

@@ -1,5 +1,5 @@
 import { withAuth, createSupabaseClient, created, error } from '@cbt/shared'
-import { generateImage, type ImageProvider } from '../../lib/image'
+import { generateImage, generateImageFromReference, type ImageProvider } from '../../lib/image'
 import { uploadToStorage } from '../../lib/storage'
 
 // POST — generate ONE ad-hoc image from a prompt template (or raw prompt) and
@@ -9,7 +9,7 @@ import { uploadToStorage } from '../../lib/storage'
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'POST') return error(res, 405, 'Method not allowed')
 
-  const { listing_id, prompt_id, prompt, platform, provider, model } = req.body ?? {}
+  const { listing_id, prompt_id, prompt, platform, provider, model, reference_image_url } = req.body ?? {}
   if (!listing_id) return error(res, 400, 'listing_id là bắt buộc')
 
   const supabase = createSupabaseClient()
@@ -46,7 +46,12 @@ export default withAuth(async (req, res, auth) => {
         : 'dalle'
 
   try {
-    const gen = await generateImage(promptText, imgProvider)
+    // With a reference image → img2img (style transfer, gpt-image-1 edit).
+    // Otherwise text-to-image with the resolved model/provider.
+    const gen =
+      typeof reference_image_url === 'string' && reference_image_url
+        ? await generateImageFromReference(promptText, reference_image_url)
+        : await generateImage(promptText, imgProvider, model ?? templateModel)
     const path = `${auth.account_id}/adhoc/${crypto.randomUUID()}.png`
     const url = await uploadToStorage(gen.buffer, path)
 
