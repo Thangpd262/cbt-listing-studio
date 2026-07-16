@@ -1,33 +1,55 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 
 // Keep-warm fan-out. A Vercel Cron (see vercel.json) pings this every 5 min.
-// Invoking it warms the hub function itself; the parallel health fetches below
-// warm the two other cold-start-prone services (list-amz, generator) so the
-// first real user request each interval hits an already-warm lambda.
+// Invoking it warms the hub lambda; the parallel fetches below warm the other
+// cold-start-prone services so the first real user request each interval hits
+// an already-warm lambda.
 //
-// Cron can only call a path on its own project, so a single endpoint that
-// fans out is how we keep all three deployments warm from one cron entry.
+// The list-amz /api/jobs ping additionally exercises the slowest DB query path
+// (keeps the pooled connection + query plan warm). That route is behind
+// withAuth, so it only reaches the query when KEEP_WARM_API_KEY is set; without
+// a key it 401s and just the lambda is warmed.
+//
+// Cron can only call a path on its own project, so one fan-out endpoint keeps
+// every deployment warm from a single cron entry.
 
-// Production defaults; overridable via env for preview/staging deployments.
-const TARGETS: Record<string, string> = {
-  hub: process.env.NEXT_PUBLIC_HUB_URL || 'https://cbt-hub-tau.vercel.app',
-  'list-amz': process.env.NEXT_PUBLIC_LIST_AMZ_URL || 'https://cbt-list-amz.vercel.app',
-  generator: process.env.NEXT_PUBLIC_GENERATOR_URL || 'https://cbt-listing-studio-generator.vercel.app',
-}
+const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL || 'https://cbt-hub-tau.vercel.app'
+const LIST_AMZ_URL = process.env.NEXT_PUBLIC_LIST_AMZ_URL || 'https://cbt-list-amz.vercel.app'
+const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'https://cbt-listing-studio-generator.vercel.app'
+const KEEP_WARM_API_KEY = process.env.KEEP_WARM_API_KEY
 
-async function ping(baseUrl: string): Promise<{ ok: boolean; ms: number; status?: number; error?: string }> {
+const trim = (u: string) => u.replace(/\/$/, '')
+
+type Check = { name: string; url: string; headers?: Record<string, string> }
+
+const CHECKS: Check[] = [
+  { name: 'hub', url: `${trim(HUB_URL)}/api/health` },
+  { name: 'list-amz', url: `${trim(LIST_AMZ_URL)}/api/health` },
+  { name: 'generator', url: `${trim(GENERATOR_URL)}/api/health` },
+  // Warm the list-amz jobs query (DB path), authenticated when a key is present.
+  {
+    name: 'list-amz-jobs',
+    url: `${trim(LIST_AMZ_URL)}/api/jobs?limit=1`,
+    headers: KEEP_WARM_API_KEY ? { 'X-API-Key': KEEP_WARM_API_KEY } : undefined,
+  },
+]
+
+async function ping(check: Check): Promise<{ name: string; ok: boolean; ms: number; status?: number; error?: string }> {
   const started = Date.now()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
+    const res = await fetch(check.url, {
       signal: controller.signal,
+      headers: check.headers,
       // Never serve a cached response — we want to actually hit the lambda.
       cache: 'no-store',
     })
-    return { ok: res.ok, ms: Date.now() - started, status: res.status }
+    // <500 means the lambda responded (a 401 still means it's warm); 5xx is a
+    // real problem worth flagging.
+    return { name: check.name, ok: res.status < 500, ms: Date.now() - started, status: res.status }
   } catch (e) {
-    return { ok: false, ms: Date.now() - started, error: e instanceof Error ? e.message : 'fetch failed' }
+    return { name: check.name, ok: false, ms: Date.now() - started, error: e instanceof Error ? e.message : 'fetch failed' }
   } finally {
     clearTimeout(timeout)
   }
@@ -42,9 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ status: 'unauthorized' })
   }
 
-  const entries = Object.entries(TARGETS)
-  const results = await Promise.all(entries.map(([, url]) => ping(url)))
-  const services = entries.map(([name], i) => ({ name, ...results[i] }))
+  const services = await Promise.all(CHECKS.map(ping))
   const allOk = services.every((s) => s.ok)
 
   res.status(allOk ? 200 : 207).json({ status: allOk ? 'ok' : 'degraded', services })
