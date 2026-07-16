@@ -258,7 +258,7 @@ async function downloadAndParseReport(
   const lines = csvText.split('\n')
   if (lines.length < 2) return { templates: [], debugHeaders: [] }
   const headers = lines[0].split('\t').map((h) => h.trim().toLowerCase())
-  const col = headers.indexOf('merchant-shipping-group-name')
+  const col = headers.indexOf('merchant-shipping-group')
   if (col === -1) return { templates: [], debugHeaders: headers }
 
   const names = new Set<string>()
