@@ -11,9 +11,17 @@ export default withAuth(async (req, res, auth) => {
   const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) ?? '20', 10) || 20))
   const from = (page - 1) * limit
 
+  // Explicit column list (no SELECT *) + a planned (estimated) count instead of
+  // an exact one: the exact count forced a full scan of the account's jobs on
+  // every request, and the UI does not display a total. payload/result are kept
+  // because the job detail view renders them. Served by
+  // idx_amz_listing_jobs_account_created (account_id, created_at DESC).
   let query = supabase
     .from('amz_listing_jobs')
-    .select('*, product:amz_products(sku, title), creator:app_users!created_by(email)', { count: 'exact' })
+    .select(
+      'id, selling_account_id, product_id, action, status, payload, result, error, retry_count, created_at, updated_at, product:amz_products(sku, title), creator:app_users!created_by(email)',
+      { count: 'planned' }
+    )
     .eq('account_id', auth.account_id)
     .order('created_at', { ascending: false })
     .range(from, from + limit - 1)
