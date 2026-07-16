@@ -393,7 +393,14 @@ export const listAmzApi = {
   // server-side paginated + filtered.
   async getCachedListings(
     apiKey: string,
-    params: { page?: number; limit?: number; search?: string; type?: string; niche?: string } = {}
+    params: {
+      page?: number
+      limit?: number
+      search?: string
+      type?: string
+      niche?: string
+      sort?: 'newest' | 'oldest' | 'updated'
+    } = {}
   ) {
     const q = new URLSearchParams()
     q.set('page', String(params.page ?? 1))
@@ -401,6 +408,7 @@ export const listAmzApi = {
     if (params.search) q.set('search', params.search)
     if (params.type) q.set('type', params.type)
     if (params.niche) q.set('niche', params.niche)
+    if (params.sort) q.set('sort', params.sort)
     const res = await fetch(`/api/amz-listings?${q}`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<CachedListingsPage<AmzCachedListing>>(res)
   },

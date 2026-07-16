@@ -113,6 +113,8 @@ export default function ListAmzPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterNiche, setFilterNiche] = useState('')
+  // Sort is independent of the filters — changing a filter must not reset it.
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'updated'>('newest')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
 
@@ -148,6 +150,7 @@ export default function ListAmzPage() {
         search,
         type: filterType,
         niche: filterNiche,
+        sort,
       })
       setRows(r.listings)
       setTotal(r.total)
@@ -160,7 +163,7 @@ export default function ListAmzPage() {
       setLoaded(true)
       setLoading(false)
     }
-  }, [apiKey, useSample, page, limit, search, filterType, filterNiche])
+  }, [apiKey, useSample, page, limit, search, filterType, filterNiche, sort])
 
   useEffect(() => {
     load()
@@ -178,7 +181,7 @@ export default function ListAmzPage() {
   // Clear bulk selection whenever the visible set changes.
   useEffect(() => {
     setSelected(new Set())
-  }, [page, limit, search, filterType, filterNiche])
+  }, [page, limit, search, filterType, filterNiche, sort])
 
   async function sync() {
     if (!canSync) return
@@ -197,7 +200,7 @@ export default function ListAmzPage() {
     }
   }
 
-  // Sample mode filters/pages locally over the editable `rows`.
+  // Sample mode filters/sorts/pages locally over the editable `rows`.
   const sampleView = useMemo(() => {
     if (!useSample) return null
     let f = rows
@@ -207,8 +210,13 @@ export default function ListAmzPage() {
     }
     if (filterType) f = f.filter((r) => r.product_type === filterType)
     if (filterNiche) f = f.filter((r) => r.niche === filterNiche)
+    const col = sort === 'updated' ? 'synced_at' : 'created_at'
+    f = [...f].sort((a, b) => {
+      const diff = new Date(b[col]).getTime() - new Date(a[col]).getTime()
+      return sort === 'oldest' ? -diff : diff
+    })
     return f
-  }, [useSample, rows, search, filterType, filterNiche])
+  }, [useSample, rows, search, filterType, filterNiche, sort])
 
   const totalCount = useSample ? sampleView!.length : total
   const totalPages = limit === 0 ? 1 : Math.max(1, Math.ceil(totalCount / limit))
@@ -356,6 +364,19 @@ export default function ListAmzPage() {
               {n}
             </option>
           ))}
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value as 'newest' | 'oldest' | 'updated')
+            setPage(1)
+          }}
+          className="field"
+          title="Sắp xếp"
+        >
+          <option value="newest">Sắp xếp: Mới nhất</option>
+          <option value="oldest">Sắp xếp: Cũ nhất</option>
+          <option value="updated">Sắp xếp: Mới update</option>
         </select>
         <button onClick={sync} disabled={!canSync || syncing} className="btn btn-cyan" title="Đồng bộ từ Amazon">
           {syncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />} Đồng bộ
