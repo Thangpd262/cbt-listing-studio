@@ -104,7 +104,7 @@ export default withAuth(async (req, res, auth) => {
       const marketplaceId = config?.marketplace_id || DEFAULT_MARKETPLACE
       void marketplaceId // used implicitly via report content
 
-      const templates = await downloadAndParseReport(
+      const { templates, debugHeaders } = await downloadAndParseReport(
         report.reportDocumentId!,
         accessToken
       )
@@ -133,7 +133,7 @@ export default withAuth(async (req, res, auth) => {
         .eq('account_id', auth.account_id)
         .eq('selling_account_id', sellingAccountId)
 
-      return ok(res, { status: 'ready', templates, synced_at: now })
+      return ok(res, { status: 'ready', templates, synced_at: now, debug_headers: debugHeaders })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Lỗi không xác định'
       return ok(res, {
@@ -233,7 +233,7 @@ function spHeaders(accessToken: string): Record<string, string> {
 async function downloadAndParseReport(
   reportDocumentId: string,
   accessToken: string
-): Promise<string[]> {
+): Promise<{ templates: string[]; debugHeaders: string[] }> {
   const docRes = await fetch(
     `${SP_API_BASE}/reports/2021-06-30/documents/${reportDocumentId}`,
     { headers: spHeaders(accessToken) }
@@ -256,15 +256,15 @@ async function downloadAndParseReport(
   }
 
   const lines = csvText.split('\n')
-  if (lines.length < 2) return []
+  if (lines.length < 2) return { templates: [], debugHeaders: [] }
   const headers = lines[0].split('\t').map((h) => h.trim().toLowerCase())
   const col = headers.indexOf('merchant-shipping-group-name')
-  if (col === -1) return []
+  if (col === -1) return { templates: [], debugHeaders: headers }
 
   const names = new Set<string>()
   for (let i = 1; i < lines.length; i++) {
     const name = lines[i].split('\t')[col]?.trim()
     if (name) names.add(name)
   }
-  return [...names].sort()
+  return { templates: [...names].sort(), debugHeaders: headers }
 }
