@@ -7,7 +7,7 @@ import { withAuth, ok, error, createSupabaseClient } from '@cbt/shared'
 // Query params: page, limit (0 = all), search, type (product_type), niche.
 // Response data: { listings, last_synced_at, total, page, limit }.
 const COLS =
-  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, updated_at, synced_at'
+  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, updated_at, amz_listed_at, synced_at'
 
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')

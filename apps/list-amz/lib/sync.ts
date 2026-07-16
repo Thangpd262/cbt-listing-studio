@@ -33,6 +33,7 @@ function toCacheRow(accountId: string, marketplaceId: string, item: SearchListin
     price: item.offers?.[0]?.price?.amount ?? null,
     quantity: item.fulfillmentAvailability?.[0]?.quantity ?? null,
     image_url: s.mainImage?.link ?? null,
+    amz_listed_at: s.createdDate ?? null, // real Amazon listing-creation date
     raw: item as unknown as Record<string, unknown>,
     synced_at: new Date().toISOString(),
   }

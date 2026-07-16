@@ -21,6 +21,7 @@ export type SearchListingsItem = {
     itemName?: string
     productType?: string
     status?: string[] | string
+    createdDate?: string // ISO 8601 — when the listing was created on Amazon
     mainImage?: { link?: string }
   }>
   offers?: Array<{ price?: { amount?: number } }>

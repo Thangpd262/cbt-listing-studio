@@ -31,6 +31,7 @@ const SAMPLE: AmzCachedListing[] = [
     niche: 'Boho',
     created_at: '2026-07-01T09:12:00Z',
     updated_at: '2026-07-16T10:00:00Z',
+    amz_listed_at: '2026-06-15T08:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
   },
   {
@@ -47,6 +48,7 @@ const SAMPLE: AmzCachedListing[] = [
     niche: 'Gift',
     created_at: '2026-07-03T11:40:00Z',
     updated_at: '2026-07-12T10:00:00Z',
+    amz_listed_at: '2026-06-20T08:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
   },
 ]
@@ -508,7 +510,7 @@ export default function ListAmzPage() {
                       </select>
                     </td>
                     <td className="border-b border-line px-2 py-1.5 text-[11px] text-muted">
-                      {fmtDateTime(r.created_at)}
+                      {fmtDateTime(r.amz_listed_at ?? r.created_at)}
                     </td>
                     <td className="border-b border-line px-2 py-1.5">
                       <div className="flex items-center gap-1">

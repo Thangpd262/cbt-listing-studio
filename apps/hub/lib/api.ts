@@ -356,6 +356,7 @@ export type AmzCachedListing = {
   niche: string | null
   created_at: string
   updated_at: string | null
+  amz_listed_at: string | null // Amazon listing-creation date (SP-API summaries.createdDate)
   synced_at: string
 }
 
