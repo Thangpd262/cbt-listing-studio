@@ -214,7 +214,7 @@ export default function ListAmzPage() {
     }
     if (filterType) f = f.filter((r) => r.product_type === filterType)
     if (filterNiche) f = f.filter((r) => r.niche === filterNiche)
-    const col = sort === 'updated' ? 'updated_at' : 'created_at'
+    const col = sort === 'updated' ? 'updated_at' : 'amz_listed_at'
     f = [...f].sort((a, b) => {
       const diff = new Date(b[col] ?? 0).getTime() - new Date(a[col] ?? 0).getTime()
       return sort === 'oldest' ? -diff : diff

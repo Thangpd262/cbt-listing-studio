@@ -34,10 +34,10 @@ export default withAuth(async (req, res, auth) => {
   if (type) query = query.eq('product_type', type)
   if (niche) query = query.eq('niche', niche)
 
-  // "updated" → last user edit (updated_at); newest/oldest → first-seen (created_at).
-  // Rows never edited since the migration have a backfilled updated_at; brand-new
-  // synced rows may be null, so keep nulls last for the "updated" sort.
-  const orderCol = sort === 'updated' ? 'updated_at' : 'created_at'
+  // "updated" → last user edit (updated_at); newest/oldest → real Amazon
+  // listing-creation date (amz_listed_at). Nulls last so any row missing the
+  // date (e.g. before backfill) doesn't jump to the top.
+  const orderCol = sort === 'updated' ? 'updated_at' : 'amz_listed_at'
   query = query.order(orderCol, { ascending: sort === 'oldest', nullsFirst: false })
 
   if (limit > 0) {
