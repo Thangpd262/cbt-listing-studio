@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Copy, Plus, Pencil, Trash2, Truck } from 'lucide-react'
 import Layout from '../components/Layout'
 import ConfigOverrideEditor, { type EditableConfig } from '../components/ConfigOverrideEditor'
 import { useAuth } from '../lib/auth-context'
-import { userConfigApi } from '../lib/api'
+import { accountApi, userConfigApi, type SellingAccount } from '../lib/api'
 import { SYSTEM_CONFIGS, MY_CONFIGS } from '../lib/sample-data'
 
 type Tab = 'sys' | 'my'
 
-// Unified row for "Config của tôi" — carries overrides so the editor can prefill.
-type Row = { id: string; name: string; based_on: string; overrides: Record<string, unknown> }
+type Row = {
+  id: string
+  name: string
+  based_on: string
+  overrides: Record<string, unknown>
+  shipping_template_name?: string | null
+}
 
 const SAMPLE_ROWS: Row[] = MY_CONFIGS.map((c) => ({
   id: c.id,
   name: c.name,
   based_on: c.from,
   overrides: {},
+  shipping_template_name: null,
 }))
 
 function note(overrides: Record<string, unknown>) {
@@ -24,12 +30,29 @@ function note(overrides: Record<string, unknown>) {
 }
 
 export default function ConfigsPage() {
-  const { apiKey } = useAuth()
+  const { apiKey, token } = useAuth()
   const [tab, setTab] = useState<Tab>('sys')
   const [rows, setRows] = useState<Row[]>(SAMPLE_ROWS)
   const [usingSample, setUsingSample] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<EditableConfig | null>(null)
+
+  // Selling accounts (Amazon) để fetch shipping templates
+  const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
+  const [sellingAccountId, setSellingAccountId] = useState<string | null>(null)
+
+  // Load selling accounts từ account service
+  useEffect(() => {
+    if (!token) return
+    accountApi
+      .getSellingAccounts(token)
+      .then((accounts) => {
+        const amz = accounts.filter((a) => a.platform === 'amazon' && a.is_active)
+        setSellingAccounts(amz)
+        if (amz.length > 0) setSellingAccountId((prev) => prev ?? amz[0].id)
+      })
+      .catch(() => {})
+  }, [token])
 
   const load = useCallback(async () => {
     if (!apiKey) {
@@ -40,7 +63,13 @@ export default function ConfigsPage() {
     try {
       const data = await userConfigApi.list(apiKey)
       setRows(
-        data.map((r) => ({ id: r.id, name: r.name, based_on: r.based_on, overrides: r.overrides ?? {} }))
+        data.map((r) => ({
+          id: r.id,
+          name: r.name,
+          based_on: r.based_on,
+          overrides: r.overrides ?? {},
+          shipping_template_name: r.shipping_template_name ?? null,
+        }))
       )
       setUsingSample(false)
     } catch {
@@ -56,7 +85,10 @@ export default function ConfigsPage() {
   async function clone(key: string, label: string) {
     const name = `${label} (bản sao)`
     if (usingSample || !apiKey) {
-      setRows((c) => [...c, { id: `my-${Date.now()}`, name, based_on: key, overrides: {} }])
+      setRows((c) => [
+        ...c,
+        { id: `my-${Date.now()}`, name, based_on: key, overrides: {}, shipping_template_name: null },
+      ])
       setTab('my')
       return
     }
@@ -153,8 +185,28 @@ export default function ConfigsPage() {
         </>
       ) : (
         <>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-muted">Config do bạn tạo, dựa trên config mặc định.</span>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">Config do bạn tạo, dựa trên config mặc định.</span>
+              {/* Selling account selector — dùng để fetch shipping templates */}
+              {sellingAccounts.length > 0 && (
+                <div className="flex items-center gap-1.5 rounded-md border border-line bg-panel2 px-2 py-1">
+                  <Truck size={12} className="text-muted" />
+                  <span className="text-[11px] text-muted">TK bán:</span>
+                  <select
+                    value={sellingAccountId ?? ''}
+                    onChange={(e) => setSellingAccountId(e.target.value || null)}
+                    className="cursor-pointer bg-transparent text-[11px] text-fg focus:outline-none"
+                  >
+                    {sellingAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             <button onClick={() => setTab('sys')} className="btn btn-acc !text-[11px]">
               <Plus size={12} /> Tạo từ mặc định
             </button>
@@ -172,8 +224,14 @@ export default function ConfigsPage() {
               >
                 <div className="flex-1">
                   <div className="text-xs text-fg">{c.name}</div>
-                  <div className="mt-0.5 text-[11px] text-muted">
-                    Từ {c.based_on} · {note(c.overrides)}
+                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
+                    <span>Từ {c.based_on} · {note(c.overrides)}</span>
+                    {c.shipping_template_name && (
+                      <span className="flex items-center gap-1">
+                        <Truck size={10} />
+                        {c.shipping_template_name}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => setEditing(c)} className="btn !text-[11px]">
@@ -197,6 +255,7 @@ export default function ConfigsPage() {
           config={editing}
           apiKey={apiKey}
           usingSample={usingSample}
+          sellingAccountId={sellingAccountId}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)

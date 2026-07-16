@@ -8,13 +8,15 @@ export default withAuth(async (req: NextApiRequest, res: NextApiResponse, auth) 
   const supabase = createSupabaseClient()
 
   if (req.method === 'PATCH') {
-    const { name, overrides } = (req.body ?? {}) as {
+    const { name, overrides, shipping_template_name } = (req.body ?? {}) as {
       name?: string
       overrides?: Record<string, unknown>
+      shipping_template_name?: string | null
     }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (typeof name === 'string') patch.name = name
     if (overrides && typeof overrides === 'object') patch.overrides = overrides
+    if (shipping_template_name !== undefined) patch.shipping_template_name = shipping_template_name
     if (Object.keys(patch).length === 1) return error(res, 400, 'Không có gì để cập nhật')
 
     const { data, error: dbErr } = await supabase

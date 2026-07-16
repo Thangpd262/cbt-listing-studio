@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, RotateCcw, Loader2 } from 'lucide-react'
-import { productConfigApi, userConfigApi, type ConfigField } from '../lib/api'
+import { X, RotateCcw, Loader2, RefreshCw, Truck } from 'lucide-react'
+import { productConfigApi, userConfigApi, shippingTemplateApi, type ConfigField } from '../lib/api'
 import { SAMPLE_BASE_FIELDS } from '../lib/sample-data'
 
 export type EditableConfig = {
@@ -8,20 +8,23 @@ export type EditableConfig = {
   name: string
   based_on: string
   overrides: Record<string, unknown>
+  shipping_template_name?: string | null
 }
 
-// Modal to override individual fields of a cloned config. Each field shows the
-// system default; typing a value stores it in `overrides` (empty = use default).
+// Full-screen editor để override từng field của cloned config.
+// Mỗi ô hiển thị giá trị mặc định của hệ thống; nhập đè để override (trống = dùng mặc định).
 export default function ConfigOverrideEditor({
   config,
   apiKey,
   usingSample,
+  sellingAccountId,
   onClose,
   onSaved,
 }: {
   config: EditableConfig
   apiKey: string | null
   usingSample: boolean
+  sellingAccountId: string | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -35,6 +38,14 @@ export default function ConfigOverrideEditor({
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  // Shipping template
+  const [shippingTemplate, setShippingTemplate] = useState(config.shipping_template_name ?? '')
+  const [templates, setTemplates] = useState<string[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+  const [syncingTemplates, setSyncingTemplates] = useState(false)
+  const [templateError, setTemplateError] = useState<string | null>(null)
+
+  // Load schema fields
   useEffect(() => {
     let cancelled = false
     async function loadFields() {
@@ -53,10 +64,36 @@ export default function ConfigOverrideEditor({
       }
     }
     loadFields()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [apiKey, usingSample, config.based_on])
+
+  // Load cached templates khi mở editor (nếu có selling account)
+  useEffect(() => {
+    if (!apiKey || !sellingAccountId || usingSample) return
+    let cancelled = false
+    setLoadingTemplates(true)
+    shippingTemplateApi
+      .list(apiKey, sellingAccountId)
+      .then((r) => { if (!cancelled) setTemplates(r.templates) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingTemplates(false) })
+    return () => { cancelled = true }
+  }, [apiKey, sellingAccountId, usingSample])
+
+  async function handleSyncTemplates() {
+    if (!apiKey || !sellingAccountId) return
+    setSyncingTemplates(true)
+    setTemplateError(null)
+    try {
+      const r = await shippingTemplateApi.sync(apiKey, sellingAccountId)
+      setTemplates(r.templates)
+      if (r.error) setTemplateError(r.error)
+    } catch (e) {
+      setTemplateError(e instanceof Error ? e.message : 'Sync thất bại')
+    } finally {
+      setSyncingTemplates(false)
+    }
+  }
 
   function setVal(k: string, v: string) {
     setValues((s) => ({ ...s, [k]: v }))
@@ -70,13 +107,16 @@ export default function ConfigOverrideEditor({
   }
 
   async function save() {
-    // Keep only non-empty overrides.
     const overrides: Record<string, string> = {}
     for (const [k, v] of Object.entries(values)) if (v.trim() !== '') overrides[k] = v
     setSaving(true)
     try {
       if (apiKey && !usingSample) {
-        await userConfigApi.update(apiKey, config.id, { name, overrides })
+        await userConfigApi.update(apiKey, config.id, {
+          name,
+          overrides,
+          shipping_template_name: shippingTemplate || null,
+        })
       }
       onSaved()
     } catch (e) {
@@ -89,11 +129,9 @@ export default function ConfigOverrideEditor({
   const overriddenCount = Object.values(values).filter((v) => v.trim() !== '').length
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-panel" onClick={onClose}>
-      <div
-        className="flex h-full flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex flex-col bg-panel">
+      <div className="flex h-full flex-col overflow-hidden">
+
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-6 py-3">
           <div className="text-sm font-medium">
@@ -106,7 +144,8 @@ export default function ConfigOverrideEditor({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Config name + override count */}
+
+          {/* Tên config + thống kê override */}
           <div className="mb-4 flex items-end gap-4">
             <div className="w-80">
               <div className="mb-1 text-[11px] text-muted">Tên config</div>
@@ -114,10 +153,61 @@ export default function ConfigOverrideEditor({
             </div>
             <div className="pb-1.5 text-[11px] text-muted">
               Override từng trường (để trống = dùng giá trị mặc định)
-              {overriddenCount > 0 && <span className="badge b-ac ml-2">{overriddenCount} đã override</span>}
+              {overriddenCount > 0 && (
+                <span className="badge b-ac ml-2">{overriddenCount} đã override</span>
+              )}
             </div>
           </div>
 
+          {/* Shipping template */}
+          <div className="mb-5 rounded-lg border border-line bg-panel2 px-4 py-3">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-fg">
+              <Truck size={13} className="text-muted" />
+              Shipping template
+              <span className="font-normal text-muted">(cố định cho dòng hàng này)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={shippingTemplate}
+                onChange={(e) => setShippingTemplate(e.target.value)}
+                disabled={loadingTemplates}
+                className="field w-64"
+              >
+                <option value="">(chưa chọn)</option>
+                {templates.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleSyncTemplates}
+                disabled={syncingTemplates || !sellingAccountId || loadingTemplates}
+                title={!sellingAccountId ? 'Chọn tài khoản bán ở trang Configs trước' : 'Tải lại từ Amazon'}
+                className="btn !text-[11px]"
+              >
+                {syncingTemplates ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                Tải template
+              </button>
+              {loadingTemplates && (
+                <span className="text-[11px] text-muted">Đang tải…</span>
+              )}
+            </div>
+            {!sellingAccountId && (
+              <div className="mt-1.5 text-[10px] text-muted">
+                Chọn tài khoản bán Amazon ở trang Configs để tải danh sách template.
+              </div>
+            )}
+            {templateError && (
+              <div className="mt-1.5 text-[10px] text-danger">{templateError}</div>
+            )}
+          </div>
+
+          {/* Field overrides */}
           {loading ? (
             <div className="flex items-center gap-2 py-10 text-xs text-muted">
               <Loader2 size={14} className="animate-spin" /> Đang tải schema…
@@ -194,6 +284,7 @@ export default function ConfigOverrideEditor({
             {saving && <Loader2 size={13} className="animate-spin" />} Lưu config
           </button>
         </div>
+
       </div>
     </div>
   )
