@@ -89,12 +89,13 @@ export default function ConfigOverrideEditor({
   const overriddenCount = Object.values(values).filter((v) => v.trim() !== '').length
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-panel" onClick={onClose}>
       <div
-        className="ml-auto flex w-[560px] max-w-full flex-col overflow-hidden border-l border-line bg-panel"
+        className="flex h-full flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line px-3.5 py-3">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-line px-6 py-3">
           <div className="text-sm font-medium">
             Sửa config <span className="text-muted">· từ {config.based_on}</span>
           </div>
@@ -103,15 +104,18 @@ export default function ConfigOverrideEditor({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3.5">
-          <div className="mb-3">
-            <div className="mb-1 text-[11px] text-muted">Tên config</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="field w-full" />
-          </div>
-
-          <div className="mb-2 flex items-center gap-2 text-[11px] text-muted">
-            Override từng trường (để trống = dùng giá trị mặc định)
-            {overriddenCount > 0 && <span className="badge b-ac">{overriddenCount} đã override</span>}
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {/* Config name + override count */}
+          <div className="mb-4 flex items-end gap-4">
+            <div className="w-80">
+              <div className="mb-1 text-[11px] text-muted">Tên config</div>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="field w-full" />
+            </div>
+            <div className="pb-1.5 text-[11px] text-muted">
+              Override từng trường (để trống = dùng giá trị mặc định)
+              {overriddenCount > 0 && <span className="badge b-ac ml-2">{overriddenCount} đã override</span>}
+            </div>
           </div>
 
           {loading ? (
@@ -119,12 +123,16 @@ export default function ConfigOverrideEditor({
               <Loader2 size={14} className="animate-spin" /> Đang tải schema…
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {fields.map((f) => {
                 const val = values[f.k] ?? ''
                 const overridden = val.trim() !== ''
+                const isWide = f.type === 'textarea'
                 return (
-                  <div key={f.k} className="rounded-lg border border-line bg-panel2 p-2.5">
+                  <div
+                    key={f.k}
+                    className={`rounded-lg border border-line bg-panel2 p-2.5 ${isWide ? 'col-span-full' : ''}`}
+                  >
                     <div className="mb-1 flex items-center gap-2">
                       <span className="text-xs font-medium text-fg">{f.label}</span>
                       <span className="font-mono text-[10px] text-muted">{f.k}</span>
@@ -143,7 +151,7 @@ export default function ConfigOverrideEditor({
                         value={val}
                         onChange={(e) => setVal(f.k, e.target.value)}
                         placeholder={f.def || '(trống)'}
-                        className={`field min-h-[56px] w-full resize-y ${overridden ? '!border-brand' : ''}`}
+                        className={`field min-h-[80px] w-full resize-y ${overridden ? '!border-brand' : ''}`}
                       />
                     ) : f.type === 'select' ? (
                       <select
@@ -177,7 +185,8 @@ export default function ConfigOverrideEditor({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-line px-3.5 py-3">
+        {/* Footer */}
+        <div className="flex justify-end gap-2 border-t border-line px-6 py-3">
           <button onClick={onClose} className="btn">
             Huỷ
           </button>
