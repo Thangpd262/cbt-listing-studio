@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy, Plus, Pencil, Trash2, Truck } from 'lucide-react'
 import Layout from '../components/Layout'
 import ConfigOverrideEditor, { type EditableConfig } from '../components/ConfigOverrideEditor'
+import { Skeleton } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
 import { userConfigApi } from '../lib/api'
 import { useSellingAccounts, useUserConfigs } from '../lib/queries'
@@ -51,6 +52,9 @@ export default function ConfigsPage() {
         overrides: r.overrides ?? {},
         shipping_template_name: r.shipping_template_name ?? null,
       }))
+
+  // First real load (no cache yet) → skeleton rows instead of the empty state.
+  const showSkeleton = !usingSample && configsQuery.isLoading
 
   // Amazon selling accounts drive the shipping-template picker.
   const sellingAccounts = (sellingQuery.data ?? []).filter((a) => a.platform === 'amazon' && a.is_active)
@@ -188,12 +192,22 @@ export default function ConfigsPage() {
             </button>
           </div>
           <div className="overflow-hidden rounded-[10px] border border-line bg-panel">
-            {rows.length === 0 && (
+            {showSkeleton &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2 border-b border-line px-3 py-2.5 last:border-b-0">
+                  <div className="flex-1">
+                    <Skeleton className="h-3.5 w-40" />
+                    <Skeleton className="mt-1.5 h-2.5 w-56" />
+                  </div>
+                </div>
+              ))}
+            {!showSkeleton && rows.length === 0 && (
               <div className="px-3 py-10 text-center text-xs text-muted">
                 Chưa có config nào. Sang tab &quot;Config mặc định&quot; và nhân bản một cái.
               </div>
             )}
-            {rows.map((c) => (
+            {!showSkeleton &&
+              rows.map((c) => (
               <div
                 key={c.id}
                 className="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0"

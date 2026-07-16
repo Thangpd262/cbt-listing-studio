@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Save, Pencil, Trash2, RefreshCw, Loader2, X } from 'lucide-react'
 import Layout from '../components/Layout'
+import { SkeletonRows } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
 import { generatorApi, serviceConfigured, type PromptTemplate } from '../lib/api'
 import { usePrompts } from '../lib/queries'
@@ -44,6 +45,8 @@ export default function PromptAiPage() {
 
   const prompts = usingSample ? sampleList : (promptsQuery.data ?? [])
   const loading = promptsQuery.isFetching
+  // First real load (no cache yet) → skeleton rows instead of a blank table.
+  const showSkeleton = configured && promptsQuery.isLoading
 
   async function save() {
     if (!form.name.trim() || !form.content.trim()) {
@@ -177,7 +180,9 @@ export default function PromptAiPage() {
           </tr>
         </thead>
         <tbody>
-          {prompts.map((p) => (
+          {showSkeleton && <SkeletonRows rows={5} cols={5} />}
+          {!showSkeleton &&
+            prompts.map((p) => (
             <tr key={p.id} className="hover:bg-panel2">
               <td className="border-b border-line px-2 py-1.5">{p.name}</td>
               <td className="border-b border-line px-2 py-1.5 text-muted">{p.model ?? '—'}</td>
@@ -195,7 +200,7 @@ export default function PromptAiPage() {
               </td>
             </tr>
           ))}
-          {prompts.length === 0 && (
+          {!showSkeleton && prompts.length === 0 && (
             <tr>
               <td colSpan={5} className="px-2 py-10 text-center text-xs text-muted">
                 {loading ? 'Đang tải…' : 'Chưa có prompt nào.'}
