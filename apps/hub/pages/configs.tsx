@@ -166,7 +166,7 @@ export default function ConfigsPage() {
                 key={c.key}
                 className="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0"
               >
-                <span className="w-[130px] font-mono text-[11px] text-brand">{c.key}</span>
+                <span className="w-[130px] font-mono text-[11px] text-cyan">{c.key}</span>
                 <span className="flex-1 text-xs text-fg">{c.label}</span>
                 <span className="w-[110px] text-center text-[11px] text-muted">{c.product_type}</span>
                 <span className="w-[100px] text-center text-[11px] text-muted">

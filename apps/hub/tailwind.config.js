@@ -5,22 +5,31 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Palette mirrors ui-mockup-dark.html
-        bg: '#0e0e12',
-        panel: '#16161c', // card
-        panel2: '#1e1e27', // card2
-        line: '#2a2a38', // border
-        fg: '#dddde8', // text
-        muted: '#5e5e78',
+        // Palette mirrors ui-prototype-v2.html (ECB·POD light theme)
+        bg: '#F7F8FA', // paper / shell background
+        panel: '#FFFFFF', // card, sidebar, topbar
+        panel2: '#F7F8FA', // input/select bg, hover surfaces
+        line: '#E3E7EC', // default border
+        line2: '#CBD2DA', // stronger / interactive border
+        fg: '#1B2129', // primary text
+        muted: '#6B7684', // secondary / muted text
+        faint: '#98A2B0', // placeholder / disabled
         brand: {
-          DEFAULT: '#5b9bf5', // accent
-          soft: 'rgba(91,155,245,0.13)',
+          DEFAULT: '#FF9408', // orange accent — active nav, primary/save, links
+          soft: '#FFF3E6', // active-nav / soft-orange fill
         },
-        ok: { DEFAULT: '#35c97a', soft: 'rgba(53,201,122,0.12)' },
-        warn: { DEFAULT: '#e89940', soft: 'rgba(232,153,64,0.12)' },
-        danger: { DEFAULT: '#e05252', soft: 'rgba(224,82,82,0.12)' },
-        amazon: '#ff9900',
+        brand2: '#E8720F', // orange hover
+        ok: { DEFAULT: '#0E9F6E', soft: '#D1FAE5' }, // success / clone
+        warn: { DEFAULT: '#F5B301', soft: '#FEF3C7' },
+        danger: { DEFAULT: '#E63946', soft: '#FEE2E2' },
+        cyan: { DEFAULT: '#00AEEF', soft: 'rgba(0,174,239,0.10)' }, // sync btn + config key
+        amazon: '#FF9900',
         walmart: '#4dabf7',
+      },
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'], // default body
+        disp: ['Space Grotesk', 'ui-sans-serif', 'sans-serif'], // brand, titles, headings
+        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'], // SKU / ASIN / UUID / code / date
       },
     },
   },

@@ -115,7 +115,7 @@ export default function ListWmtPage() {
           placeholder="SKU / tiêu đề / WPID…"
           className="field flex-1"
         />
-        <button onClick={sync} disabled={!canSync || syncing} className="btn btn-acc" title="Đồng bộ từ Walmart">
+        <button onClick={sync} disabled={!canSync || syncing} className="btn btn-cyan" title="Đồng bộ từ Walmart">
           {syncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />} Đồng bộ
         </button>
         <button onClick={load} disabled={loading} className="btn" title="Tải lại từ cache">

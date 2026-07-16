@@ -357,7 +357,7 @@ export default function ListAmzPage() {
             </option>
           ))}
         </select>
-        <button onClick={sync} disabled={!canSync || syncing} className="btn btn-acc" title="Đồng bộ từ Amazon">
+        <button onClick={sync} disabled={!canSync || syncing} className="btn btn-cyan" title="Đồng bộ từ Amazon">
           {syncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />} Đồng bộ
         </button>
         <button onClick={load} disabled={loading} className="btn" title="Tải lại từ cache">

@@ -82,9 +82,9 @@ export default function ApiKeysPage() {
           placeholder="Tên key (tuỳ chọn)"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+          className="flex-1 rounded-md border border-line px-3 py-2 text-sm focus:border-brand focus:outline-none"
         />
-        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+        <button type="submit" className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
           Tạo key
         </button>
       </form>
@@ -128,7 +128,7 @@ export default function ApiKeysPage() {
       </div>
 
       {apiKey && (
-        <p className="mt-4 text-xs text-gray-400">Key đang dùng: <code className="font-mono">{apiKey.slice(0, 12)}…</code></p>
+        <p className="mt-4 text-xs text-muted">Key đang dùng: <code className="font-mono">{apiKey.slice(0, 12)}…</code></p>
       )}
     </Layout>
   )

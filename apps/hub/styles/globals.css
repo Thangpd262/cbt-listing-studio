@@ -10,33 +10,33 @@ body,
 
 body {
   @apply bg-bg text-fg antialiased;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
-/* Dark scrollbars so overflow areas match the theme */
+/* Light scrollbars so overflow areas match the theme */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2b2b3a transparent;
+  scrollbar-color: #dfdfdf transparent;
 }
 *::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2b2b3a;
+  background: #dfdfdf;
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a3a4c;
+  background: #c8c8c8;
   background-clip: padding-box;
 }
 
 select,
 input,
 textarea {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 @layer components {
@@ -54,7 +54,10 @@ textarea {
     @apply border-brand bg-brand text-white hover:bg-brand hover:text-white hover:opacity-90;
   }
   .btn-ok {
-    @apply border-ok bg-ok-soft text-ok hover:text-ok hover:opacity-90;
+    @apply border-ok bg-ok text-white hover:text-white hover:opacity-90;
+  }
+  .btn-cyan {
+    @apply border-cyan bg-cyan text-white hover:text-white hover:opacity-90;
   }
   .btn-danger {
     @apply text-danger hover:border-danger hover:text-danger;
@@ -66,13 +69,13 @@ textarea {
     @apply inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium;
   }
   .b-ok {
-    @apply border-ok bg-ok-soft text-ok;
+    @apply border-ok bg-ok-soft text-[#065F46];
   }
   .b-wn {
-    @apply border-warn bg-warn-soft text-warn;
+    @apply border-warn bg-warn-soft text-[#92400E];
   }
   .b-er {
-    @apply border-danger bg-danger-soft text-danger;
+    @apply border-danger bg-danger-soft text-[#991B1B];
   }
   .b-mu {
     @apply border-line bg-panel2 text-muted;

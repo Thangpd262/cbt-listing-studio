@@ -1,8 +1,8 @@
 // Dependency-free SVG charts for the dashboard (no Chart.js needed).
 // Two shapes: a single-series bar chart and a multi-series line chart.
 
-const GRID = '#2a2a38'
-const AXIS = '#5e5e78'
+const GRID = '#E3E7EC'
+const AXIS = '#98A2B0'
 
 type BarDatum = { label: string; value: number }
 
@@ -45,8 +45,8 @@ export function BarChart({ data, height = 170 }: { data: BarDatum[]; height?: nu
               width={barW}
               height={h}
               rx={4}
-              fill="rgba(91,155,245,.55)"
-              stroke="rgba(91,155,245,.9)"
+              fill="rgba(255,148,8,.55)"
+              stroke="rgba(255,148,8,.9)"
               strokeWidth={1}
             />
             <text x={x + barW / 2} y={height - 8} textAnchor="middle" fontSize={9} fill={AXIS}>

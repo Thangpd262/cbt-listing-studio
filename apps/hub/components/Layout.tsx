@@ -13,9 +13,9 @@ export default function Layout({ title, children }: { title?: string; children: 
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header: logo · platform + marketplace (moved here) · user · logout */}
-        <header className="flex h-[46px] flex-shrink-0 items-center gap-2.5 border-b border-line bg-panel px-3.5">
-          <div className="whitespace-nowrap text-[13px] font-medium">
-            <span className="text-brand">CBT</span> Listing Studio
+        <header className="flex h-[48px] flex-shrink-0 items-center gap-2.5 border-b border-line bg-panel px-3.5">
+          <div className="whitespace-nowrap font-disp text-[15px] font-bold tracking-[0.02em] text-fg">
+            CBT Listing Studio
           </div>
 
           {/* Platform + marketplace dropdowns */}
@@ -54,7 +54,7 @@ export default function Layout({ title, children }: { title?: string; children: 
         </header>
 
         <main className="relative flex-1 overflow-auto p-3.5">
-          {title && <h1 className="mb-3 text-[15px] font-medium text-fg">{title}</h1>}
+          {title && <h1 className="mb-3 font-disp text-[17px] font-bold text-fg">{title}</h1>}
           {children}
         </main>
       </div>

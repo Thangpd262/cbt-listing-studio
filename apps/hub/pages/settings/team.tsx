@@ -93,7 +93,7 @@ export default function TeamPage() {
                           </select>
                           <button
                             onClick={() => approve(u.id)}
-                            className="flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1 text-white hover:bg-gray-800"
+                            className="flex items-center gap-1 rounded-md bg-brand px-2.5 py-1 text-white hover:opacity-90"
                           >
                             <Check size={15} /> Duyệt
                           </button>

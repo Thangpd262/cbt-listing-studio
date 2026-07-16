@@ -136,7 +136,7 @@ export default function SellingAccountsPage() {
     }
   }
 
-  const input = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none'
+  const input = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none'
 
   return (
     <Layout title="Selling Accounts">
@@ -310,7 +310,7 @@ export default function SellingAccountsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full rounded-md bg-gray-900 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+              className="w-full rounded-md bg-brand py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
               {saving ? 'Đang lưu…' : 'Tạo selling account'}
             </button>
