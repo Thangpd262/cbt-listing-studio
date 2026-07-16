@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair } from 'lucide-react'
+import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
-import { SAMPLE_AI_IMAGES, type SampleListing } from '../lib/sample-data'
+import ImageLightbox from './ImageLightbox'
+import { type SampleListing } from '../lib/sample-data'
 
 type GalleryImage = { id: string; url: string; ai?: boolean }
 
@@ -26,7 +27,14 @@ function shortCode(productType: string | null | undefined): string {
   return TYPE_SHORT[productType] ?? (productType.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase() || 'ITEM')
 }
 
-// Inline 3-column card: [listing meta] · [content + images] · [config + actions].
+// 'YYYY-MM-DD' → 'DD/MM/YYYY' (left as-is if it doesn't match).
+function formatDate(d?: string): string | undefined {
+  if (!d) return undefined
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d
+}
+
+// Inline 4-column card: [listing meta] · [title] · [images] · [config + actions].
 // One card per crawled listing (rendered as a stack in the Crawl page).
 export default function CrawlJobPanel({
   listing,
@@ -52,14 +60,16 @@ export default function CrawlJobPanel({
   const [title, setTitle] = useState(listing.title)
   const [images, setImages] = useState<GalleryImage[]>(() => [
     ...listing.images.map((url, i) => ({ id: `etsy-${i}`, url })),
-    ...SAMPLE_AI_IMAGES.map((url, i) => ({ id: `ai-${i}`, url, ai: true })),
+    ...listing.aiImages.map((url, i) => ({ id: `ai-${i}`, url, ai: true })),
   ])
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...SAMPLE_AI_IMAGES.map((_, i) => `ai-${i}`)])
+    () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...listing.aiImages.map((_, i) => `ai-${i}`)])
   )
   const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
+  // Fullscreen preview (Etsy or AI image).
+  const [lightbox, setLightbox] = useState<{ url: string; caption?: string } | null>(null)
   // Price derived silently; SKU is generated fresh at job-creation time.
   const price = String(listing.price)
   // title autosave status + tags → search_term
@@ -80,9 +90,21 @@ export default function CrawlJobPanel({
     () => myConfigs.find((c) => c.id === config)?.imageUrls ?? [],
     [myConfigs, config]
   )
+  const etsyId = listing.etsyId
+  const listingUrl = etsyId ? `https://www.etsy.com/listing/${etsyId}` : null
 
   // selling account is derived silently (not shown in this layout).
   const sellingAccountId = sellingAccounts[0]?.id ?? ''
+
+  // Persist the AI image list back to the crawl record (survives reload).
+  async function persistAiImages(urls: string[]) {
+    if (!apiKey) return
+    try {
+      await crawlApi.updateListing(apiKey, listing.id, { ai_images: urls })
+    } catch {
+      // ignore — keep the local edit
+    }
+  }
 
   // (b) debounce title changes → PUT crawl listing. Skips the initial render.
   const firstRun = useRef(true)
@@ -101,7 +123,7 @@ export default function CrawlJobPanel({
         }
       }
       setSaveStatus('saved')
-    }, 1000)
+    }, 500)
     return () => clearTimeout(t)
   }, [title, apiKey, listing.id])
 
@@ -111,6 +133,7 @@ export default function CrawlJobPanel({
   }
 
   function delImg(id: string) {
+    const img = images.find((i) => i.id === id)
     setImages((imgs) => imgs.filter((i) => i.id !== id))
     setSelected((s) => {
       const n = new Set(s)
@@ -119,6 +142,8 @@ export default function CrawlJobPanel({
     })
     if (mainId === id) setMainId(null)
     if (refImageId === id) setRefImageId(null)
+    // AI images are persisted → removing one must sync to the DB.
+    if (img?.ai) persistAiImages(aiImages.filter((i) => i.id !== id).map((i) => i.url))
   }
 
   function toggleSelected(id: string) {
@@ -156,6 +181,7 @@ export default function CrawlJobPanel({
       const id = `ai-${Date.now()}`
       setImages((imgs) => [...imgs, { id, url, ai: true }])
       setSelected((s) => new Set(s).add(id))
+      persistAiImages([...aiImages.map((i) => i.url), url])
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Gen ảnh AI thất bại')
     } finally {
@@ -172,6 +198,7 @@ export default function CrawlJobPanel({
     try {
       const url = await genOne()
       setImages((imgs) => imgs.map((i) => (i.id === id ? { ...i, url } : i)))
+      persistAiImages(aiImages.map((i) => (i.id === id ? url : i.url)))
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Gen lại thất bại')
     } finally {
@@ -227,11 +254,13 @@ export default function CrawlJobPanel({
     const isSel = selected.has(img.id)
     const isRef = refImageId === img.id
     return (
-      <div className="relative h-24 w-24 flex-shrink-0">
+      <div className="relative h-20 w-20 flex-shrink-0">
         <img
           src={img.url}
           alt=""
-          className={`h-24 w-24 rounded-md border-2 object-cover ${
+          onClick={() => setLightbox({ url: img.url, caption: listing.title })}
+          title="Xem ảnh lớn"
+          className={`h-20 w-20 cursor-pointer rounded-md border-2 object-cover ${
             isMain ? 'border-brand' : isSel ? 'border-line' : 'border-transparent opacity-50'
           } ${isRef ? 'ring-2 ring-purple-400' : ''}`}
         />
@@ -248,14 +277,14 @@ export default function CrawlJobPanel({
           <span className="absolute left-6 top-1 rounded bg-brand px-1 text-[9px] font-medium text-white">main</span>
         ) : isRef ? (
           <span className="absolute left-6 top-1 rounded bg-purple-500 px-1 text-[9px] font-medium text-white">
-            Tham chiếu AI
+            Ref
           </span>
         ) : null}
         {/* delete (top-right) */}
         <button
           onClick={() => delImg(img.id)}
-          title="Xoá ảnh"
-          className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[12px] leading-none text-danger"
+          title={img.ai ? 'Xoá ảnh AI' : 'Bỏ ảnh khỏi thẻ'}
+          className="absolute -right-1.5 -top-1.5 grid h-[18px] w-[18px] place-items-center rounded-full border-[1.5px] border-white bg-danger text-[10px] font-bold leading-none text-white"
         >
           ×
         </button>
@@ -296,129 +325,154 @@ export default function CrawlJobPanel({
   }
 
   return (
-    <div className="card grid grid-cols-1 gap-4 lg:grid-cols-[190px_minmax(0,1fr)_220px]">
+    <div className="card grid grid-cols-1 gap-4 lg:grid-cols-[170px_240px_minmax(0,1fr)_164px] lg:items-start">
       {/* ── Left: listing meta ── */}
-      <div className="flex flex-col gap-1.5 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-muted">#{index + 1}</span>
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-panel2 text-muted">
-            <User size={13} />
-          </span>
-          <span className="truncate text-sm text-muted">{listing.username ?? '—'}</span>
+      <div className="flex flex-col gap-1 text-xs">
+        <span className="font-disp text-[11px] font-bold text-faint">#{index + 1}</span>
+        <div className="flex items-center gap-1.5 text-muted">
+          <User size={13} />
+          <span className="truncate">{listing.username ?? '—'}</span>
         </div>
         {listing.email && (
-          <div className="truncate text-sm text-brand" title={listing.email}>
+          <div className="truncate text-brand" title={listing.email}>
             {listing.email}
           </div>
         )}
         <div className="text-sm font-semibold text-fg">{listing.shop}</div>
-        {listing.etsyId && <div className="font-mono text-[11px] text-muted">{listing.etsyId}</div>}
-        <span className={`badge w-fit text-sm ${listing.hasJob ? 'b-ok' : 'b-mu'}`}>
-          {listing.hasJob ? '✓ Đã tạo job' : 'Chưa tạo job'}
+        {listingUrl ? (
+          <a
+            href={listingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1 font-mono text-[12px] text-brand hover:underline"
+          >
+            {etsyId}
+            <ExternalLink size={10} />
+          </a>
+        ) : (
+          <span className="font-mono text-[12px] text-faint">—</span>
+        )}
+        <span className={`badge mt-1 w-fit ${listing.hasJob ? 'b-ok' : 'b-mu'}`}>
+          {listing.hasJob ? '● Đã tạo job' : '● Chưa tạo job'}
         </span>
-        {listing.createdAt && <div className="text-sm text-muted">{listing.createdAt}</div>}
+        {formatDate(listing.createdAt) && (
+          <div className="font-mono text-[11px] text-muted">{formatDate(listing.createdAt)}</div>
+        )}
       </div>
 
-      {/* ── Middle: title + images ── */}
-      <div className="min-w-0">
-        {/* Title — its own full-width block, separate from images */}
-        <div className="mb-3 rounded-lg border border-line bg-panel2/40 p-2.5">
-          <div className="mb-1 text-[11px] text-muted">Tiêu đề sản phẩm</div>
-          <textarea
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="field min-h-[64px] w-full resize-y"
-          />
-          <div className="mt-1 text-[10px] text-muted">
-            {title.length} ký tự ·{' '}
-            {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
+      {/* ── Title (fixed 240×80 textarea) ── */}
+      <div className="flex flex-col gap-1">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Tiêu đề sản phẩm</div>
+        <textarea
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="field h-20 w-[240px] max-w-full resize-none leading-relaxed"
+        />
+        <div className="text-[11px] text-faint">
+          {title.length} ký tự ·{' '}
+          {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
+        </div>
+      </div>
+
+      {/* ── Images ── */}
+      <div className="flex min-w-0 flex-col gap-2.5">
+        {/* Etsy images (all, no limit) */}
+        <div>
+          <div className="mb-1 text-[11.5px] font-semibold text-muted">
+            Ảnh Etsy <span className="text-muted">({etsyImages.length})</span>
           </div>
+          {etsyImages.length ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {etsyImages.map((img) => (
+                  <Thumb key={img.id} img={img} canRef />
+                ))}
+              </div>
+              <div className="mt-1 flex items-center gap-1 text-[10px] text-muted">
+                <Crosshair size={10} className="text-purple-300" /> Chọn ảnh tham chiếu để gen theo phong cách ảnh đó
+              </div>
+            </>
+          ) : (
+            <div className="text-[12px] text-faint">—</div>
+          )}
         </div>
 
-        {/* Etsy images (all, no limit) */}
-        <div className="mb-1 text-sm font-medium text-fg">
-          Ảnh Etsy <span className="text-xs text-muted">({etsyImages.length})</span>
-        </div>
-        {etsyImages.length ? (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {etsyImages.map((img) => (
-                <Thumb key={img.id} img={img} canRef />
+        {/* AI images — grid only when there are any; else "—" (label always shows count) */}
+        <div>
+          <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
+            <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-muted">({aiImages.length})</span>
+          </div>
+          {aiImages.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {aiImages.map((img) => (
+                <Thumb key={img.id} img={img} canRegen />
               ))}
             </div>
-            <div className="mb-3 mt-1 flex items-center gap-1 text-[10px] text-muted">
-              <Crosshair size={10} className="text-purple-300" /> Chọn ảnh tham chiếu để gen theo phong cách ảnh đó
-            </div>
-          </>
-        ) : (
-          <div className="mb-3 text-[11px] text-muted">Không có ảnh Etsy.</div>
-        )}
-
-        {/* AI images */}
-        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-fg">
-          <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-xs text-muted">({aiImages.length})</span>
-        </div>
-        {aiImages.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {aiImages.map((img) => (
-              <Thumb key={img.id} img={img} canRegen />
-            ))}
+          ) : (
+            <div className="text-[12px] text-faint">—</div>
+          )}
+          {/* prompt + model + gen */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select value={promptId} onChange={(e) => setPromptId(e.target.value)} className="field min-w-[150px] flex-1">
+              <option value="">— chọn prompt —</option>
+              {prompts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="field">
+              {AI_MODELS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={genImage}
+              disabled={!promptId || genLoading}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#7C3AED] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#6D28D9] disabled:opacity-40"
+            >
+              {genLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Gen ảnh AI
+            </button>
           </div>
-        )}
-        {/* prompt + model + gen */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <select value={promptId} onChange={(e) => setPromptId(e.target.value)} className="field min-w-[150px] flex-1">
-            <option value="">— chọn prompt —</option>
-            {prompts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <select value={model} onChange={(e) => setModel(e.target.value)} className="field">
-            {AI_MODELS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <button onClick={genImage} disabled={!promptId || genLoading} className="btn btn-acc">
-            {genLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Gen ảnh AI
-          </button>
         </div>
 
         {/* Tags → mapped to search_term on the job */}
-        <div className="mb-3">
-          <div className="mb-1 text-sm font-medium text-fg">Tags / Search term</div>
+        <div>
+          <div className="mb-1 text-[11.5px] font-semibold text-muted">Tags / Search term</div>
           <textarea
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="mỗi tag 1 dòng, hoặc cách nhau bằng dấu phẩy"
-            className="field min-h-[44px] w-full resize-y"
+            className="field min-h-[40px] w-full resize-y"
           />
         </div>
 
         {/* config default images (read-only) */}
-        <div className="mb-1 text-sm font-medium text-fg">
-          Ảnh mặc định (config) <span className="text-xs text-muted">({configImages.length})</span>
-        </div>
-        {configImages.length ? (
-          <div className="flex flex-wrap gap-2">
-            {configImages.map((url, i) => (
-              <img
-                key={i}
-                src={url}
-                alt=""
-                title="Ảnh mặc định từ config (dùng khi không chọn ảnh nào)"
-                className="h-[56px] w-[56px] rounded-md border border-line object-cover opacity-80"
-              />
-            ))}
+        <div>
+          <div className="mb-1 text-[11.5px] font-semibold text-muted">
+            Ảnh mặc định (config) <span className="text-muted">({configImages.length})</span>
           </div>
-        ) : (
-          <div className="text-[11px] text-muted">—</div>
-        )}
+          {configImages.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {configImages.map((url, i) => (
+                <img
+                  key={i}
+                  src={url}
+                  alt=""
+                  onClick={() => setLightbox({ url, caption: 'Ảnh mặc định (config)' })}
+                  title="Ảnh mặc định từ config (dùng khi không chọn ảnh nào)"
+                  className="h-20 w-20 cursor-pointer rounded-md border border-line object-cover opacity-80"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-[12px] text-faint">—</div>
+          )}
+        </div>
 
-        <div className="mt-3 border-t border-line pt-2 text-[11px] text-muted">
+        <div className="border-t border-line pt-2 text-[11px] text-muted">
           Đã chọn: <span className="font-semibold text-fg">{selectedCount}</span> ảnh
         </div>
       </div>
@@ -426,7 +480,7 @@ export default function CrawlJobPanel({
       {/* ── Right: config + actions ── */}
       <div className="flex flex-col gap-2.5">
         <div>
-          <div className="mb-1 text-sm text-muted">Dòng hàng</div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Dòng hàng</div>
           <select
             value={config}
             onChange={(e) => setConfig(e.target.value)}
@@ -465,10 +519,14 @@ export default function CrawlJobPanel({
         <button onClick={submit} disabled={!config || submitting} className="btn btn-acc w-full justify-center py-2">
           {submitting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />} Tạo job
         </button>
-        <button onClick={onDelete} className="btn w-full justify-center">
+        <button onClick={onDelete} className="btn btn-danger w-full justify-center">
           <Trash2 size={13} /> Xóa
         </button>
       </div>
+
+      {lightbox && (
+        <ImageLightbox url={lightbox.url} caption={lightbox.caption} onClose={() => setLightbox(null)} />
+      )}
     </div>
   )
 }

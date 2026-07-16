@@ -30,6 +30,12 @@ function overrideImages(overrides: Record<string, unknown>): string[] {
   return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : []
 }
 
+// Etsy listing id from its source URL, e.g. …/listing/4368912589/slug → "4368912589".
+function etsyListingId(url: string | null | undefined): string | undefined {
+  if (!url) return undefined
+  return /\/listing\/(\d+)/.exec(url)?.[1]
+}
+
 // Sample listings only when the crawl service isn't wired (local dev).
 const USE_SAMPLE = !serviceConfigured.crawl
 
@@ -79,7 +85,10 @@ export default function CrawlPage() {
           price: l.price ?? 0,
           hasJob: false,
           images: l.images ?? [],
+          aiImages: l.ai_images ?? [],
           email: l.created_by_email ?? undefined,
+          etsyId: etsyListingId(l.source_url),
+          sourceUrl: l.source_url ?? undefined,
           createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
         }))
       )
@@ -152,9 +161,18 @@ export default function CrawlPage() {
     if (group && l.group !== group) return false
     if (status === 'no-job' && l.hasJob) return false
     if (status === 'has-job' && !l.hasJob) return false
-    if (search && !`${l.title} ${l.shop}`.toLowerCase().includes(search.toLowerCase())) return false
+    // Search matches title, shop, or the Etsy listing ID.
+    if (search && !`${l.title} ${l.shop} ${l.etsyId ?? ''}`.toLowerCase().includes(search.toLowerCase()))
+      return false
     return true
   })
+
+  // Counts for the status toggle buttons (over the full loaded set, pre-status-filter).
+  const statusCounts = {
+    all: listings.length,
+    noJob: listings.filter((l) => !l.hasJob).length,
+    hasJob: listings.filter((l) => l.hasJob).length,
+  }
 
   async function addGroup() {
     const name = window.prompt('Tên nhóm sản phẩm mới:')?.trim()
@@ -190,8 +208,46 @@ export default function CrawlPage() {
 
   return (
     <Layout title="Etsy Crawl">
+      {/* Subtitle */}
+      <p className="mb-2.5 text-[12.5px] text-muted">
+        Chọn dòng hàng, sửa tiêu đề, chọn/xoá ảnh rồi bấm Tạo Job.
+        {isAdmin && (
+          <span className="ml-1 font-medium text-brand">Admin: bạn đang xem listing của tất cả user.</span>
+        )}
+      </p>
+
       {/* Filter bar */}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        {/* Ngách */}
+        <select value={group} onChange={(e) => setGroup(e.target.value)} className="field" title="Lọc theo ngách">
+          <option value="">— Tất cả ngách —</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.name}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Trạng thái — toggle buttons */}
+        <div className="inline-flex overflow-hidden rounded-md border border-line2">
+          {[
+            { v: '', label: `Tất cả (${statusCounts.all})` },
+            { v: 'no-job', label: `Chưa tạo job (${statusCounts.noJob})` },
+            { v: 'has-job', label: `Đã tạo job (${statusCounts.hasJob})` },
+          ].map((s, i) => (
+            <button
+              key={s.v}
+              onClick={() => setStatus(s.v)}
+              className={`px-3 py-1.5 text-xs font-semibold transition ${i > 0 ? 'border-l border-line2' : ''} ${
+                status === s.v ? 'bg-brand text-white' : 'bg-panel text-muted hover:bg-panel2 hover:text-fg'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* User (admin only) */}
         {isAdmin && (
           <select
             value={userFilter}
@@ -207,32 +263,23 @@ export default function CrawlPage() {
             ))}
           </select>
         )}
-        <select value={group} onChange={(e) => setGroup(e.target.value)} className="field">
-          <option value="">Tất cả nhóm</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.name}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="field">
-          <option value="">Tất cả trạng thái</option>
-          <option value="no-job">Chưa tạo job</option>
-          <option value="has-job">Đã tạo job</option>
-        </select>
+
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tìm tiêu đề, shop…"
-          className="field min-w-[120px] flex-1"
+          placeholder="tiêu đề / shop / listing ID — Enter"
+          className="field min-w-[180px] flex-1"
         />
         <button onClick={loadListings} disabled={loading} className="btn">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Tải lại
         </button>
-        {/* "Thêm nhóm" — replaces the old "Thêm ngách" */}
         <button className="btn btn-ok" onClick={addGroup}>
           <Plus size={13} /> Thêm nhóm
         </button>
+
+        <span className="ml-auto whitespace-nowrap rounded-md border border-line bg-panel2 px-2.5 py-1 font-mono text-[11px] text-muted">
+          {filtered.length} listing
+        </span>
       </div>
 
       {USE_SAMPLE && (

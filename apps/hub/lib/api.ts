@@ -165,6 +165,7 @@ export type CrawlListing = {
   description: string | null
   shop_name: string | null
   images: string[]
+  ai_images: string[]
   price: number | null
   tags: string[]
   crawl_purpose: 'normal' | 'tm'
@@ -220,13 +221,14 @@ export const crawlApi = {
     return unwrap<{ id: string; deleted: boolean }>(res)
   },
 
-  async updateListing(apiKey: string, id: string, body: { title: string }) {
+  // Patch editable fields — title and/or the persisted AI image list.
+  async updateListing(apiKey: string, id: string, body: { title?: string; ai_images?: string[] }) {
     const res = await fetch(`${CRAWL_URL}/api/listings/${id}`, {
       method: 'PUT',
       headers: apiKeyHeaders(apiKey),
       body: JSON.stringify(body),
     })
-    return unwrap<{ id: string; title: string }>(res)
+    return unwrap<{ id: string; title: string; ai_images: string[] }>(res)
   },
 }
 

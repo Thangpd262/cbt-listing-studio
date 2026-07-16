@@ -48,10 +48,13 @@ export type SampleListing = {
   price: number
   hasJob: boolean
   images: string[]
+  // AI-generated images persisted on the listing (empty until any are generated).
+  aiImages: string[]
   // Left-column metadata (optional — absent for real rows that lack it).
   username?: string
   email?: string
   etsyId?: string
+  sourceUrl?: string
   createdAt?: string
 }
 
@@ -66,9 +69,11 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 22.99,
     hasJob: false,
     images: [img('case1'), img('case2'), img('case3'), img('case4'), img('case5'), img('case6')],
+    aiImages: [],
     username: 'vnam0142004',
     email: 'nam@iart.group',
     etsyId: '1792611842',
+    sourceUrl: 'https://www.etsy.com/listing/1792611842/elegant-flowers-tough-case',
     createdAt: '2026-07-14',
   },
   {
@@ -79,8 +84,10 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 19.99,
     hasJob: true,
     images: [img('wild1'), img('wild2'), img('wild3')],
+    aiImages: [img('ai-wild1')],
     username: 'vnam0142004',
     etsyId: '1805168638',
+    sourceUrl: 'https://www.etsy.com/listing/1805168638/boho-wildflower-phone-case',
     createdAt: '2026-07-14',
   },
   {
@@ -91,15 +98,14 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     price: 24.99,
     hasJob: false,
     images: [],
+    aiImages: [],
     username: 'vthang0091',
     email: 'thang@iart.group',
     etsyId: '1843647245',
+    sourceUrl: 'https://www.etsy.com/listing/1843647245/vintage-floral-graphic-tee',
     createdAt: '2026-07-13',
   },
 ]
-
-// AI-generated images shown under the Etsy images in the job panel.
-export const SAMPLE_AI_IMAGES = [img('ai-a'), img('ai-b'), img('ai-c')]
 
 // Representative subset of a base config's fields[] for offline/sample mode,
 // so the override editor is demonstrable without the product-configs API.
