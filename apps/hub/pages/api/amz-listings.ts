@@ -7,7 +7,7 @@ import { withAuth, ok, error, createSupabaseClient } from '@cbt/shared'
 // Query params: page, limit (0 = all), search, type (product_type), niche.
 // Response data: { listings, last_synced_at, total, page, limit }.
 const COLS =
-  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, synced_at'
+  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, updated_at, synced_at'
 
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')
@@ -34,8 +34,11 @@ export default withAuth(async (req, res, auth) => {
   if (type) query = query.eq('product_type', type)
   if (niche) query = query.eq('niche', niche)
 
-  const orderCol = sort === 'updated' ? 'synced_at' : 'created_at'
-  query = query.order(orderCol, { ascending: sort === 'oldest' })
+  // "updated" → last user edit (updated_at); newest/oldest → first-seen (created_at).
+  // Rows never edited since the migration have a backfilled updated_at; brand-new
+  // synced rows may be null, so keep nulls last for the "updated" sort.
+  const orderCol = sort === 'updated' ? 'updated_at' : 'created_at'
+  query = query.order(orderCol, { ascending: sort === 'oldest', nullsFirst: false })
 
   if (limit > 0) {
     const from = (page - 1) * limit

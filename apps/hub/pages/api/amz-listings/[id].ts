@@ -14,9 +14,10 @@ export default withAuth(async (req, res, auth) => {
 
   if (req.method === 'PATCH') {
     const { niche } = (req.body ?? {}) as { niche?: string }
+    // Bump updated_at on every user edit so the "Mới update" sort reflects it.
     const { data, error: dbErr } = await supabase
       .from('amz_listings_cache')
-      .update({ niche: niche?.trim() || null })
+      .update({ niche: niche?.trim() || null, updated_at: new Date().toISOString() })
       .eq('account_id', auth.account_id)
       .eq('id', id)
       .select('id, niche')

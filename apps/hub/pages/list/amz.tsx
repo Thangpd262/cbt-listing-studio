@@ -30,6 +30,7 @@ const SAMPLE: AmzCachedListing[] = [
     product_type: 'SHIRT',
     niche: 'Boho',
     created_at: '2026-07-01T09:12:00Z',
+    updated_at: '2026-07-16T10:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
   },
   {
@@ -45,6 +46,7 @@ const SAMPLE: AmzCachedListing[] = [
     product_type: 'MUG',
     niche: 'Gift',
     created_at: '2026-07-03T11:40:00Z',
+    updated_at: '2026-07-12T10:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
   },
 ]
@@ -210,9 +212,9 @@ export default function ListAmzPage() {
     }
     if (filterType) f = f.filter((r) => r.product_type === filterType)
     if (filterNiche) f = f.filter((r) => r.niche === filterNiche)
-    const col = sort === 'updated' ? 'synced_at' : 'created_at'
+    const col = sort === 'updated' ? 'updated_at' : 'created_at'
     f = [...f].sort((a, b) => {
-      const diff = new Date(b[col]).getTime() - new Date(a[col]).getTime()
+      const diff = new Date(b[col] ?? 0).getTime() - new Date(a[col] ?? 0).getTime()
       return sort === 'oldest' ? -diff : diff
     })
     return f

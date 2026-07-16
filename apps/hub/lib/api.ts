@@ -355,6 +355,7 @@ export type AmzCachedListing = {
   product_type: string | null
   niche: string | null
   created_at: string
+  updated_at: string | null
   synced_at: string
 }
 
