@@ -17,6 +17,9 @@ export default withAuth(async (req, res, auth) => {
   const limit = Number.isFinite(rawLimit) && rawLimit >= 0 ? rawLimit : 20 // 0 = all
   const type = ((req.query.type as string) || '').trim()
   const niche = ((req.query.niche as string) || '').trim()
+  // Sort: newest/oldest by first-seen (created_at); "updated" by last sync time
+  // (synced_at) — the cache has no separate updated_at column.
+  const sort = ((req.query.sort as string) || 'newest').trim()
   // Strip PostgREST filter metacharacters so free text can't break the .or() grammar.
   const search = ((req.query.search as string) || '').trim().replace(/[(),*]/g, ' ')
 
@@ -31,7 +34,8 @@ export default withAuth(async (req, res, auth) => {
   if (type) query = query.eq('product_type', type)
   if (niche) query = query.eq('niche', niche)
 
-  query = query.order('synced_at', { ascending: false })
+  const orderCol = sort === 'updated' ? 'synced_at' : 'created_at'
+  query = query.order(orderCol, { ascending: sort === 'oldest' })
 
   if (limit > 0) {
     const from = (page - 1) * limit
