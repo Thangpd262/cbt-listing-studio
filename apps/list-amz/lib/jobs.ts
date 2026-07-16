@@ -58,6 +58,12 @@ export async function executeJob(supabase: Supabase, jobId: string) {
         listingBody = buildListingBody(job.payload as ListingPayload, marketplaceId)
       }
       result = await client.putListing(sellerId, product.sku, listingBody)
+      // SP-API returns HTTP 200 even for INVALID submissions -- surface as failure.
+      const spResult = result as { status?: string; issues?: { code: string; message: string }[] }
+      if (spResult.status === 'INVALID' || spResult.issues?.length) {
+        const msgs = spResult.issues?.map((i) => i.code + ': ' + i.message).join(' | ') ?? 'Submission rejected by Amazon'
+        throw new Error(msgs)
+      }
     } else if (job.action === 'delete') {
       result = await client.deleteListing(sellerId, product.sku)
     } else if (job.action === 'price_qty') {

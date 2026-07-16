@@ -10,7 +10,7 @@ export default withAuth(async (req, res, auth) => {
   if (req.method === 'PUT') {
     // Editable fields: title and/or the AI-generated image list. Both optional
     // so callers can patch just one.
-    const { title, ai_images } = req.body ?? {}
+    const { title, ai_images, images } = req.body ?? {}
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (title !== undefined) {
       if (typeof title !== 'string') return error(res, 400, 'title phải là chuỗi')
@@ -22,8 +22,14 @@ export default withAuth(async (req, res, auth) => {
       }
       patch.ai_images = ai_images
     }
-    if (patch.title === undefined && patch.ai_images === undefined) {
-      return error(res, 400, 'Cần title hoặc ai_images')
+    if (images !== undefined) {
+      if (!Array.isArray(images) || images.some((u: unknown) => typeof u !== 'string')) {
+        return error(res, 400, 'images phai la mang URL')
+      }
+      patch.images = images
+    }
+    if (patch.title === undefined && patch.ai_images === undefined && patch.images === undefined) {
+      return error(res, 400, 'Can title, ai_images hoac images')
     }
     const { data, error: dbError } = await supabase
       .from('crawl_listings')

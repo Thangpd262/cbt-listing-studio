@@ -106,6 +106,16 @@ export default function CrawlJobPanel({
     }
   }
 
+  // Persist remaining Etsy images after a deletion (survives reload).
+  async function persistEtsyImages(urls: string[]) {
+    if (!apiKey) return
+    try {
+      await crawlApi.updateListing(apiKey, listing.id, { images: urls })
+    } catch {
+      // ignore
+    }
+  }
+
   // (b) debounce title changes → PUT crawl listing. Skips the initial render.
   const firstRun = useRef(true)
   useEffect(() => {
@@ -142,8 +152,9 @@ export default function CrawlJobPanel({
     })
     if (mainId === id) setMainId(null)
     if (refImageId === id) setRefImageId(null)
-    // AI images are persisted → removing one must sync to the DB.
+    // All image types are persisted → removing one must sync to the DB.
     if (img?.ai) persistAiImages(aiImages.filter((i) => i.id !== id).map((i) => i.url))
+    else persistEtsyImages(etsyImages.filter((i) => i.id !== id).map((i) => i.url))
   }
 
   function toggleSelected(id: string) {
@@ -207,6 +218,10 @@ export default function CrawlJobPanel({
   }
 
   async function submit() {
+    if (title.length > 75) {
+      alert('Title vuot qua 75 ky tu -- Amazon se tu choi. Rut ngan truoc khi tao job.')
+      return
+    }
     const configKey = resolveConfigKey(config)
     // Generate the SKU now: {SHORT}-{unix10}, short-code from the config's product_type.
     const selectedConfig = myConfigs.find((c) => c.id === config)
@@ -372,7 +387,7 @@ export default function CrawlJobPanel({
           className="field h-20 w-[240px] max-w-full resize-none leading-relaxed"
         />
         <div className="text-[11px] text-faint">
-          {title.length} ký tự ·{' '}
+          <span className={title.length > 75 ? 'text-red-500 font-semibold' : ''}>{title.length}/75</span>{' '}ký tự ·{' '}
           {saveStatus === 'saving' ? 'đang lưu…' : saveStatus === 'saved' ? 'đã lưu' : 'tự lưu'}
         </div>
       </div>
