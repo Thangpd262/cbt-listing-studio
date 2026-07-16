@@ -171,7 +171,7 @@ export function buildVariationAttributes(
   const parentSku = (values[parentField?.k ?? 'parent'] ?? '').trim()
 
   const attrs: Record<string, unknown> = {
-    variation_theme: mkt(variationTheme, marketplaceId),
+    variation_theme: [{ name: variationTheme, marketplace_id: marketplaceId }],
   }
 
   if (parentSku) {
