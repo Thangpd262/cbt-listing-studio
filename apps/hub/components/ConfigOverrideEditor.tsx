@@ -87,7 +87,7 @@ export default function ConfigOverrideEditor({
     try {
       // POST kick off report — trả về { status: 'syncing' } hoặc 'ready' nếu cache còn tươi
       const r = await shippingTemplateApi.sync(apiKey, sellingAccountId)
-      if (r.templates.length > 0) {
+      if (r.templates?.length > 0) {
         setTemplates(r.templates)
         setSyncingTemplates(false)
         return
