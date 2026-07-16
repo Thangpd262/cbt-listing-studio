@@ -11,3 +11,15 @@ export function timeAgo(iso: string): string {
   const days = Math.floor(hours / 24)
   return `${days} ngày trước`
 }
+
+// Absolute timestamp: "DD/MM/YYYY, H:MM AM/PM" (12-hour clock). Used in the
+// jobs table so the exact submission time is legible.
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const date = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
+  const ampm = d.getHours() >= 12 ? 'PM' : 'AM'
+  const hour = d.getHours() % 12 || 12
+  return `${date}, ${hour}:${pad(d.getMinutes())} ${ampm}`
+}

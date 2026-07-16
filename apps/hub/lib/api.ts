@@ -441,6 +441,14 @@ export const listAmzApi = {
     })
     return unwrap<{ job_id: string; status: string; error?: string }>(res)
   },
+  // Remove a job record (does not affect the live Amazon listing).
+  async deleteJob(apiKey: string, id: string) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/jobs/${id}`, {
+      method: 'DELETE',
+      headers: apiKeyHeaders(apiKey),
+    })
+    return unwrap<{ id: string; deleted: boolean }>(res)
+  },
   // Config mode: { selling_account_id, sku, config_key, field_values }
   async createListing(apiKey: string, body: Record<string, unknown>) {
     const res = await fetch(`${LIST_AMZ_URL}/api/listings`, {
