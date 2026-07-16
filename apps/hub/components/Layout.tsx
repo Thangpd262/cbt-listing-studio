@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react'
+import Head from 'next/head'
 import { Store } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../lib/auth-context'
@@ -10,6 +11,9 @@ export default function Layout({ title, children }: { title?: string; children: 
 
   return (
     <div className="flex h-screen bg-bg">
+      <Head>
+        <title>{`CBT Listing Studio v${process.env.NEXT_PUBLIC_APP_VERSION}`}</title>
+      </Head>
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header: logo · platform + marketplace (moved here) · user · logout */}

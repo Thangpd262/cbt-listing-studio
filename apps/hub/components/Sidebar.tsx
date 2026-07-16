@@ -79,7 +79,7 @@ export default function Sidebar() {
   const groups = buildGroups(platform)
 
   return (
-    <aside className="w-48 flex-shrink-0 overflow-y-auto border-r border-line bg-panel py-1.5">
+    <aside className="flex w-48 flex-shrink-0 flex-col overflow-y-auto border-r border-line bg-panel py-1.5">
       {groups.map((group) => (
         <div key={group.title}>
           <div className="px-3 pb-1 pt-2.5 text-[10px] uppercase tracking-wider text-muted">
@@ -105,6 +105,13 @@ export default function Sidebar() {
           })}
         </div>
       ))}
+
+      {/* App version — pinned to the bottom of the sidebar */}
+      <div className="mt-auto flex items-center gap-1.5 border-t border-line px-4 py-2 font-mono text-[11px] text-faint">
+        <span>v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+        <span>·</span>
+        <span>Có gì mới</span>
+      </div>
     </aside>
   )
 }
