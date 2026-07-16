@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '../styles/globals.css'
 import { AuthProvider, useAuth } from '../lib/auth-context'
 import { PlatformProvider } from '../lib/platform-context'
+import { usePrefetchGlobalData } from '../lib/prefetch'
 
 // One client per browser session. Defaults tuned for this app: don't refetch on
 // window focus (data is not that volatile), retry once, and treat data as fresh
@@ -44,12 +45,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Kicks off the global-data prefetch once auth is ready. Renders nothing; must
+// sit inside both the query client and the auth provider.
+function GlobalDataPrefetcher() {
+  usePrefetchGlobalData()
+  return null
+}
+
 export default function App({ Component, pageProps }: AppProps) {
   const [queryClient] = useState(makeQueryClient)
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <PlatformProvider>
+          <GlobalDataPrefetcher />
           <AuthGuard>
             <Component {...pageProps} />
           </AuthGuard>
