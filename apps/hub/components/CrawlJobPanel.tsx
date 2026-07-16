@@ -325,7 +325,10 @@ export default function CrawlJobPanel({
   }
 
   return (
-    <div className="card grid grid-cols-1 gap-4 lg:grid-cols-[170px_240px_minmax(0,1fr)_164px] lg:items-start">
+    <div
+      data-testid="crawl-card"
+      className="card grid grid-cols-1 gap-4 lg:grid-cols-[170px_240px_minmax(0,1fr)_164px] lg:items-start"
+    >
       {/* ── Left: listing meta ── */}
       <div className="flex flex-col gap-1 text-xs">
         <span className="font-disp text-[11px] font-bold text-faint">#{index + 1}</span>
@@ -398,7 +401,7 @@ export default function CrawlJobPanel({
         </div>
 
         {/* AI images — grid only when there are any; else "—" (label always shows count) */}
-        <div>
+        <div data-testid="ai-section">
           <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
             <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-muted">({aiImages.length})</span>
           </div>

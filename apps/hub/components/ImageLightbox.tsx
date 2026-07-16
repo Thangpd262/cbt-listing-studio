@@ -23,6 +23,7 @@ export default function ImageLightbox({
   return (
     <div
       onClick={onClose}
+      data-testid="lightbox-backdrop"
       className="fixed inset-0 z-[600] flex items-center justify-center backdrop-blur-[4px]"
       style={{ background: 'rgba(0,0,0,0.85)' }}
       role="dialog"
@@ -30,6 +31,7 @@ export default function ImageLightbox({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        data-testid="lightbox-modal"
         className="relative h-[500px] w-[500px] max-w-[92vw] overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <button
