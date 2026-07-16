@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, RotateCcw, Loader2, RefreshCw, Truck } from 'lucide-react'
+import { X, RotateCcw, Loader2, Truck } from 'lucide-react'
 import { productConfigApi, userConfigApi, shippingTemplateApi, type ConfigField } from '../lib/api'
 import { SAMPLE_BASE_FIELDS } from '../lib/sample-data'
 
@@ -42,8 +42,6 @@ export default function ConfigOverrideEditor({
   const [shippingTemplate, setShippingTemplate] = useState(config.shipping_template_name ?? '')
   const [templates, setTemplates] = useState<string[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(false)
-  const [syncingTemplates, setSyncingTemplates] = useState(false)
-  const [templateError, setTemplateError] = useState<string | null>(null)
 
   // Load schema fields
   useEffect(() => {
@@ -80,41 +78,6 @@ export default function ConfigOverrideEditor({
     return () => { cancelled = true }
   }, [apiKey, sellingAccountId, usingSample])
 
-  async function handleSyncTemplates() {
-    if (!apiKey || !sellingAccountId) return
-    setSyncingTemplates(true)
-    setTemplateError(null)
-    try {
-      // POST kick off report — trả về { status: 'syncing' } hoặc 'ready' nếu cache còn tươi
-      const r = await shippingTemplateApi.sync(apiKey, sellingAccountId)
-      if (r.templates?.length > 0) {
-        setTemplates(r.templates)
-        setSyncingTemplates(false)
-        return
-      }
-      // Poll GET mỗi 5s cho đến khi status === 'ready' hoặc 'error'
-      for (let i = 0; i < 24; i++) { // tối đa 2 phút
-        await new Promise((res) => setTimeout(res, 5000))
-        const poll = await shippingTemplateApi.list(apiKey, sellingAccountId)
-        if (poll.status === 'ready') {
-          setTemplates(poll.templates)
-          setSyncingTemplates(false)
-          return
-        }
-        if (poll.status === 'error') {
-          setTemplateError(poll.error ?? 'Sync thất bại')
-          setSyncingTemplates(false)
-          return
-        }
-        // status === 'syncing' → tiếp tục poll
-      }
-      setTemplateError('Hết thời gian chờ. Thử lại sau.')
-    } catch (e) {
-      setTemplateError(e instanceof Error ? e.message : 'Sync thất bại')
-    } finally {
-      setSyncingTemplates(false)
-    }
-  }
 
   function setVal(k: string, v: string) {
     setValues((s) => ({ ...s, [k]: v }))
@@ -188,43 +151,33 @@ export default function ConfigOverrideEditor({
               <span className="font-normal text-muted">(cố định cho dòng hàng này)</span>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={shippingTemplate}
-                onChange={(e) => setShippingTemplate(e.target.value)}
-                disabled={loadingTemplates}
-                className="field w-64"
-              >
-                <option value="">(chưa chọn)</option>
-                {templates.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleSyncTemplates}
-                disabled={syncingTemplates || !sellingAccountId || loadingTemplates}
-                title={!sellingAccountId ? 'Chọn tài khoản bán ở trang Configs trước' : 'Tải lại từ Amazon'}
-                className="btn !text-[11px]"
-              >
-                {syncingTemplates ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={13} />
-                )}
-                Tải template
-              </button>
-              {loadingTemplates && (
-                <span className="text-[11px] text-muted">Đang tải…</span>
+              {loadingTemplates ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-muted">
+                  <Loader2 size={12} className="animate-spin" /> Đang tải…
+                </span>
+              ) : (
+                <select
+                  value={shippingTemplate}
+                  onChange={(e) => setShippingTemplate(e.target.value)}
+                  className="field w-64"
+                >
+                  <option value="">(chưa chọn)</option>
+                  {templates.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
-            {!sellingAccountId && (
+            {!loadingTemplates && templates.length === 0 && (
               <div className="mt-1.5 text-[10px] text-muted">
-                Chọn tài khoản bán Amazon ở trang Configs để tải danh sách template.
+                Chưa có template.{' '}
+                <a href="/settings/selling-accounts" className="text-brand hover:underline">
+                  Vào Tài khoản bán → Sync templates
+                </a>{' '}
+                rồi quay lại đây.
               </div>
-            )}
-            {templateError && (
-              <div className="mt-1.5 text-[10px] text-danger">{templateError}</div>
             )}
           </div>
 

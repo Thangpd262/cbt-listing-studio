@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Trash2, Plug, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Trash2, Plug, Loader2, CheckCircle2, XCircle, RefreshCw, Truck } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SettingsTabs from '../../components/SettingsTabs'
 import { useAuth } from '../../lib/auth-context'
-import { accountApi, type SellingAccount } from '../../lib/api'
+import { accountApi, shippingTemplateApi, type SellingAccount } from '../../lib/api'
 
 // Per-account connection-test state (idle → testing → ok/error).
 type TestState = { status: 'testing' | 'ok' | 'error'; error?: string }
@@ -30,6 +30,11 @@ export default function SellingAccountsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [tests, setTests] = useState<Record<string, TestState>>({})
+
+  // Shipping template sync state per selling account
+  type SyncState = { status: 'idle' | 'syncing' | 'done' | 'error'; count?: number; error?: string }
+  const [syncs, setSyncs] = useState<Record<string, SyncState>>({})
+  const { apiKey } = useAuth()
 
   const load = useCallback(async () => {
     if (!token) return
@@ -86,6 +91,34 @@ export default function SellingAccountsPage() {
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Xoá thất bại')
+    }
+  }
+
+  async function onSyncTemplates(id: string) {
+    if (!apiKey) return
+    setSyncs((s) => ({ ...s, [id]: { status: 'syncing' } }))
+    try {
+      // POST kick off
+      await shippingTemplateApi.sync(apiKey, id, true)
+      // Poll GET mỗi 5s
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const poll = await shippingTemplateApi.list(apiKey, id)
+        if (poll.status === 'ready') {
+          setSyncs((s) => ({ ...s, [id]: { status: 'done', count: poll.templates.length } }))
+          return
+        }
+        if (poll.status === 'error') {
+          setSyncs((s) => ({ ...s, [id]: { status: 'error', error: poll.error } }))
+          return
+        }
+      }
+      setSyncs((s) => ({ ...s, [id]: { status: 'error', error: 'Hết thời gian chờ' } }))
+    } catch (e) {
+      setSyncs((s) => ({
+        ...s,
+        [id]: { status: 'error', error: e instanceof Error ? e.message : 'Sync thất bại' },
+      }))
     }
   }
 
@@ -147,7 +180,29 @@ export default function SellingAccountsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="inline-flex gap-2">
+                          <div className="inline-flex flex-wrap justify-end gap-2">
+                            {r.platform === 'amazon' && (() => {
+                              const s = syncs[r.id]
+                              return (
+                                <button
+                                  onClick={() => onSyncTemplates(r.id)}
+                                  disabled={s?.status === 'syncing'}
+                                  title="Đồng bộ shipping templates từ Amazon SP-API"
+                                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                                >
+                                  {s?.status === 'syncing' ? (
+                                    <Loader2 size={15} className="animate-spin" />
+                                  ) : (
+                                    <Truck size={15} />
+                                  )}
+                                  {s?.status === 'syncing'
+                                    ? 'Đang lấy…'
+                                    : s?.status === 'done'
+                                    ? `Templates (${s.count})`
+                                    : 'Sync templates'}
+                                </button>
+                              )
+                            })()}
                             <button
                               onClick={() => onTest(r.id)}
                               disabled={t?.status === 'testing'}
@@ -167,6 +222,11 @@ export default function SellingAccountsPage() {
                               <Trash2 size={15} /> Xoá
                             </button>
                           </div>
+                          {syncs[r.id]?.status === 'error' && (
+                            <div className="mt-1 text-right text-xs text-red-600">
+                              {syncs[r.id].error}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
