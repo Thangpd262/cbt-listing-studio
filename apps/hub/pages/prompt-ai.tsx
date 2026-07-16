@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Save, Pencil, Trash2, RefreshCw, Loader2, X } from 'lucide-react'
 import Layout from '../components/Layout'
 import { useAuth } from '../lib/auth-context'
-import { generatorApi, type PromptTemplate } from '../lib/api'
+import { generatorApi, serviceConfigured, type PromptTemplate } from '../lib/api'
+import { usePrompts } from '../lib/queries'
 
 const MODELS = ['gpt-image-1', 'gemini-2.5-flash-image']
 
@@ -32,41 +33,24 @@ const typeLabel = (t: string) => TYPES.find((x) => x.value === t)?.label ?? t
 
 export default function PromptAiPage() {
   const { apiKey } = useAuth()
-  const [prompts, setPrompts] = useState<PromptTemplate[]>(SAMPLE)
-  const [usingSample, setUsingSample] = useState(true)
+  const promptsQuery = usePrompts()
+  // Real prompts require an API key + a wired generator service; otherwise (or on
+  // a fetch error) fall back to the local sample list, mutated in place.
+  const configured = !!apiKey && serviceConfigured.generator
+  const usingSample = !configured || promptsQuery.isError
+  const [sampleList, setSampleList] = useState<PromptTemplate[]>(SAMPLE)
   const [form, setForm] = useState<FormState>(EMPTY)
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!apiKey) {
-      setPrompts(SAMPLE)
-      setUsingSample(true)
-      return
-    }
-    setLoading(true)
-    try {
-      const rows = await generatorApi.getPrompts(apiKey)
-      setPrompts(rows)
-      setUsingSample(false)
-    } catch {
-      setPrompts(SAMPLE)
-      setUsingSample(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [apiKey])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const prompts = usingSample ? sampleList : (promptsQuery.data ?? [])
+  const loading = promptsQuery.isFetching
 
   async function save() {
     if (!form.name.trim() || !form.content.trim()) {
       alert('Nhập tên và nội dung prompt.')
       return
     }
-    if (!apiKey || usingSample) {
+    if (!configured || !apiKey) {
       alert('Cần API key để lưu prompt thật.')
       return
     }
@@ -76,7 +60,7 @@ export default function PromptAiPage() {
       if (form.id) await generatorApi.updatePrompt(apiKey, form.id, body)
       else await generatorApi.createPrompt(apiKey, body)
       setForm(EMPTY)
-      await load()
+      await promptsQuery.refetch()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Lưu thất bại')
     } finally {
@@ -89,15 +73,15 @@ export default function PromptAiPage() {
   }
 
   async function remove(id: string) {
-    if (!apiKey || usingSample) {
-      setPrompts((ps) => ps.filter((p) => p.id !== id))
+    if (!configured || !apiKey) {
+      setSampleList((ps) => ps.filter((p) => p.id !== id))
       return
     }
     if (!confirm('Xoá prompt này?')) return
     try {
       await generatorApi.removePrompt(apiKey, id)
       if (form.id === id) setForm(EMPTY)
-      await load()
+      await promptsQuery.refetch()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Xoá thất bại')
     }
@@ -178,7 +162,7 @@ export default function PromptAiPage() {
       {/* List */}
       <div className="mb-1.5 flex items-center">
         <span className="text-xs text-muted">{prompts.length} prompt</span>
-        <button onClick={load} disabled={loading} className="btn ml-auto !text-[11px]">
+        <button onClick={() => promptsQuery.refetch()} disabled={loading} className="btn ml-auto !text-[11px]">
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Tải lại
         </button>
       </div>

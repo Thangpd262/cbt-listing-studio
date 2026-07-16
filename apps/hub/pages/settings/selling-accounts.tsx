@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Trash2, Plug, Loader2, CheckCircle2, XCircle, RefreshCw, Truck } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Trash2, Plug, Loader2, CheckCircle2, XCircle, Truck } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SettingsTabs from '../../components/SettingsTabs'
 import { useAuth } from '../../lib/auth-context'
-import { accountApi, shippingTemplateApi, type SellingAccount } from '../../lib/api'
+import { accountApi, shippingTemplateApi } from '../../lib/api'
+import { useSellingAccounts } from '../../lib/queries'
 
 // Per-account connection-test state (idle → testing → ok/error).
 type TestState = { status: 'testing' | 'ok' | 'error'; error?: string }
@@ -23,39 +24,32 @@ const empty = {
 }
 
 export default function SellingAccountsPage() {
-  const { token } = useAuth()
-  const [rows, setRows] = useState<SellingAccount[]>([])
+  const { token, apiKey } = useAuth()
+  const sellingQuery = useSellingAccounts()
+  const rows = sellingQuery.data ?? []
+  const loading = sellingQuery.isLoading
   const [form, setForm] = useState({ ...empty })
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [tests, setTests] = useState<Record<string, TestState>>({})
 
   // Shipping template sync state per selling account
   type SyncState = { status: 'idle' | 'syncing' | 'done' | 'error'; count?: number; error?: string }
   const [syncs, setSyncs] = useState<Record<string, SyncState>>({})
-  const { apiKey } = useAuth()
 
-  const load = useCallback(async () => {
-    if (!token) return
-    setLoading(true)
-    try {
-      setRows(await accountApi.getSellingAccounts(token))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được')
-    } finally {
-      setLoading(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  // Show mutation errors first, else surface a failed list fetch.
+  const error =
+    mutationError ??
+    (sellingQuery.isError
+      ? sellingQuery.error instanceof Error
+        ? sellingQuery.error.message
+        : 'Không tải được'
+      : null)
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
     if (!token) return
-    setError(null)
+    setMutationError(null)
     setSaving(true)
     try {
       const credentials =
@@ -76,9 +70,9 @@ export default function SellingAccountsPage() {
         credentials,
       })
       setForm({ ...empty })
-      await load()
+      await sellingQuery.refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Tạo thất bại')
+      setMutationError(err instanceof Error ? err.message : 'Tạo thất bại')
     } finally {
       setSaving(false)
     }
@@ -88,9 +82,9 @@ export default function SellingAccountsPage() {
     if (!token) return
     try {
       await accountApi.deleteSellingAccount(token, id)
-      await load()
+      await sellingQuery.refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Xoá thất bại')
+      setMutationError(err instanceof Error ? err.message : 'Xoá thất bại')
     }
   }
 

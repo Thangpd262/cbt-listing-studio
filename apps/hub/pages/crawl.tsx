@@ -5,16 +5,8 @@ import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } fr
 import { SkeletonCards } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform } from '../lib/platform-context'
-import {
-  accountApi,
-  crawlApi,
-  generatorApi,
-  productGroupApi,
-  serviceConfigured,
-  userConfigApi,
-  type SellingAccount,
-  type TeamMember,
-} from '../lib/api'
+import { crawlApi, productGroupApi, serviceConfigured } from '../lib/api'
+import { useProductGroups, usePrompts, useSellingAccounts, useTeam, useUserConfigs } from '../lib/queries'
 import { GROUPS, MY_CONFIGS, SAMPLE_LISTINGS, type SampleListing } from '../lib/sample-data'
 
 const SAMPLE_GROUPS: PanelGroup[] = GROUPS.map((g) => ({ id: g.id, name: g.name }))
@@ -40,7 +32,7 @@ function etsyListingId(url: string | null | undefined): string | undefined {
 const USE_SAMPLE = !serviceConfigured.crawl
 
 export default function CrawlPage() {
-  const { apiKey, token, user } = useAuth()
+  const { apiKey, user } = useAuth()
   const { platform } = usePlatform()
   const isAdmin = user?.role === 'admin'
 
@@ -49,18 +41,51 @@ export default function CrawlPage() {
   const [loaded, setLoaded] = useState(USE_SAMPLE)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // Groups + user configs feed the filter bar and the job panel.
-  const [groups, setGroups] = useState<PanelGroup[]>(SAMPLE_GROUPS)
-  const [myConfigs, setMyConfigs] = useState<PanelConfig[]>(SAMPLE_CONFIGS)
-  const [prompts, setPrompts] = useState<PanelPrompt[]>(SAMPLE_PROMPTS)
-  const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
+  // Filter-bar + job-panel metadata comes from the shared React Query cache, so
+  // it's already warm when arriving from another page (see lib/prefetch).
+  const groupsQuery = useProductGroups()
+  const configsQuery = useUserConfigs()
+  const promptsQuery = usePrompts()
+  const sellingQuery = useSellingAccounts()
+  const teamQuery = useTeam()
 
-  const [teamUsers, setTeamUsers] = useState<TeamMember[]>([])
+  // Groups added locally in sample mode (no backend to persist to).
+  const [addedGroups, setAddedGroups] = useState<PanelGroup[]>([])
+
   const [userFilter, setUserFilter] = useState('') // admin only; '' = all users
 
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
+
+  // Product groups are fetched for all platforms then filtered here, so one
+  // cache entry (and one prefetch) serves both Amazon and Walmart.
+  const realGroups: PanelGroup[] = (groupsQuery.data ?? [])
+    .filter((x) => x.platform === platform)
+    .map((x) => ({ id: x.id, name: x.name }))
+  const groups: PanelGroup[] = [
+    ...(apiKey && realGroups.length ? realGroups : SAMPLE_GROUPS),
+    ...addedGroups,
+  ]
+
+  const myConfigs: PanelConfig[] =
+    apiKey && configsQuery.data
+      ? configsQuery.data.map((x) => ({
+          id: x.id,
+          name: x.name,
+          from: x.based_on,
+          productType: x.product_type,
+          imageUrls: overrideImages(x.overrides),
+        }))
+      : SAMPLE_CONFIGS
+
+  const imagePrompts: PanelPrompt[] = (promptsQuery.data ?? [])
+    .filter((x) => x.prompt_type === 'image')
+    .map((x) => ({ id: x.id, name: x.name }))
+  const prompts: PanelPrompt[] = apiKey && imagePrompts.length ? imagePrompts : SAMPLE_PROMPTS
+
+  const sellingAccounts = (sellingQuery.data ?? []).filter((a) => a.platform === platform && a.is_active)
+  const teamUsers = isAdmin ? (teamQuery.data ?? []) : []
 
   const loadListings = useCallback(async () => {
     if (USE_SAMPLE || !apiKey) {
@@ -101,61 +126,9 @@ export default function CrawlPage() {
     }
   }, [apiKey, isAdmin, userFilter])
 
-  const loadMeta = useCallback(async () => {
-    if (!apiKey) {
-      setGroups(SAMPLE_GROUPS)
-      setMyConfigs(SAMPLE_CONFIGS)
-      setPrompts(SAMPLE_PROMPTS)
-      return
-    }
-    try {
-      const [g, c, p] = await Promise.all([
-        productGroupApi.list(apiKey, platform),
-        userConfigApi.list(apiKey),
-        generatorApi.getPrompts(apiKey).catch(() => []),
-      ])
-      setGroups(g.length ? g.map((x) => ({ id: x.id, name: x.name })) : SAMPLE_GROUPS)
-      setMyConfigs(
-        c.map((x) => ({
-          id: x.id,
-          name: x.name,
-          from: x.based_on,
-          productType: x.product_type,
-          imageUrls: overrideImages(x.overrides),
-        }))
-      )
-      const imagePrompts = p.filter((x) => x.prompt_type === 'image').map((x) => ({ id: x.id, name: x.name }))
-      setPrompts(imagePrompts.length ? imagePrompts : SAMPLE_PROMPTS)
-    } catch {
-      setGroups(SAMPLE_GROUPS)
-      setMyConfigs(SAMPLE_CONFIGS)
-      setPrompts(SAMPLE_PROMPTS)
-    }
-    // Selling accounts (for real job creation) + team list (admin filter) use
-    // the bearer token.
-    if (token) {
-      try {
-        const accts = await accountApi.getSellingAccounts(token)
-        setSellingAccounts(accts.filter((a) => a.platform === platform && a.is_active))
-      } catch {
-        setSellingAccounts([])
-      }
-      if (isAdmin) {
-        try {
-          setTeamUsers(await accountApi.getTeam(token))
-        } catch {
-          setTeamUsers([])
-        }
-      }
-    } else {
-      setSellingAccounts([])
-    }
-  }, [apiKey, platform, token, isAdmin])
-
   useEffect(() => {
     loadListings()
-    loadMeta()
-  }, [loadListings, loadMeta])
+  }, [loadListings])
 
   const filtered = listings.filter((l) => {
     if (group && l.group !== group) return false
@@ -178,12 +151,12 @@ export default function CrawlPage() {
     const name = window.prompt('Tên nhóm sản phẩm mới:')?.trim()
     if (!name) return
     if (!apiKey) {
-      setGroups((g) => [...g, { id: `local-${Date.now()}`, name }])
+      setAddedGroups((g) => [...g, { id: `local-${Date.now()}`, name }])
       return
     }
     try {
-      const created = await productGroupApi.create(apiKey, { name, platform })
-      setGroups((g) => [...g, { id: created.id, name: created.name }])
+      await productGroupApi.create(apiKey, { name, platform })
+      await groupsQuery.refetch()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Thêm nhóm thất bại')
     }

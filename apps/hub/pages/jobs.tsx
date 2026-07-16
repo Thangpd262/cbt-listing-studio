@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { RefreshCw, Trash2, Loader2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { SkeletonRows } from '../components/Skeleton'
 import JobDetailModal, { StatusBadge, statusLabel, type JobDetail } from '../components/JobDetailModal'
 import { useAuth } from '../lib/auth-context'
 import { listAmzApi, serviceConfigured, type AmzJob } from '../lib/api'
+import { useJobs } from '../lib/queries'
 import { formatDateTime } from '../lib/format'
 import { SAMPLE_JOBS } from '../lib/sample-data'
 
@@ -84,39 +85,16 @@ const FILTERS = ['pending', 'processing', 'accepted', 'error'] as const
 
 export default function JobsPage() {
   const { apiKey } = useAuth()
+  const jobsQuery = useJobs()
   const [filter, setFilter] = useState('') // '' = all; otherwise a display label
-  const [rows, setRows] = useState<Row[]>(USE_SAMPLE ? SAMPLE_ROWS : [])
-  const [loaded, setLoaded] = useState(USE_SAMPLE)
-  const [loading, setLoading] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Sample mode has no backend to refetch from, so it keeps rows locally and
+  // mutates them optimistically. Real mode reads from the React Query cache.
+  const [sampleRows, setSampleRows] = useState<Row[]>(SAMPLE_ROWS)
   const [retrying, setRetrying] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState<Row | null>(null)
 
-  const load = useCallback(async () => {
-    if (USE_SAMPLE || !apiKey) {
-      setRows(SAMPLE_ROWS)
-      setLoaded(true)
-      return
-    }
-    setLoading(true)
-    setErrorMsg(null)
-    try {
-      // Fetch all; the status dropdown filters client-side.
-      const { data } = await listAmzApi.getJobs(apiKey, { limit: 100 })
-      setRows(data.map(toRow))
-    } catch (e) {
-      setRows([])
-      setErrorMsg(e instanceof Error ? e.message : 'Không tải được jobs')
-    } finally {
-      setLoaded(true)
-      setLoading(false)
-    }
-  }, [apiKey])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const rows: Row[] = USE_SAMPLE ? sampleRows : (jobsQuery.data?.data.map(toRow) ?? [])
 
   async function retry(id: string) {
     if (!apiKey || USE_SAMPLE) return
@@ -124,7 +102,7 @@ export default function JobsPage() {
     try {
       await listAmzApi.retryJob(apiKey, id)
       setDetail(null)
-      await load()
+      await jobsQuery.refetch()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Retry thất bại')
     } finally {
@@ -141,8 +119,10 @@ export default function JobsPage() {
         alert(e instanceof Error ? e.message : 'Xoá thất bại')
         return
       }
+      await jobsQuery.refetch()
+      return
     }
-    setRows((rs) => rs.filter((r) => r.id !== id))
+    setSampleRows((rs) => rs.filter((r) => r.id !== id))
   }
 
   // Bulk-remove every error + pending job.
@@ -159,15 +139,22 @@ export default function JobsPage() {
       } finally {
         setBusy(false)
       }
-      await load()
+      await jobsQuery.refetch()
       return
     }
     const ids = new Set(targets.map((r) => r.id))
-    setRows((rs) => rs.filter((r) => !ids.has(r.id)))
+    setSampleRows((rs) => rs.filter((r) => !ids.has(r.id)))
   }
 
   const shown = filter ? rows.filter((r) => statusLabel(r.status) === filter) : rows
-  const showSkeleton = !loaded && !USE_SAMPLE
+  const showSkeleton = !USE_SAMPLE && jobsQuery.isLoading
+  const loading = jobsQuery.isFetching
+  const errorMsg =
+    !USE_SAMPLE && jobsQuery.isError
+      ? jobsQuery.error instanceof Error
+        ? jobsQuery.error.message
+        : 'Không tải được jobs'
+      : null
 
   const modalJob: JobDetail | null = detail && {
     id: detail.id,
@@ -194,7 +181,7 @@ export default function JobsPage() {
         <button onClick={clearFailedPending} disabled={busy} className="btn btn-danger">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Xoá lỗi/chờ
         </button>
-        <button onClick={load} disabled={loading} className="btn ml-auto" title="Tải lại">
+        <button onClick={() => jobsQuery.refetch()} disabled={loading} className="btn ml-auto" title="Tải lại">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>

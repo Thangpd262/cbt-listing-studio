@@ -1,50 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Check, X } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SettingsTabs from '../../components/SettingsTabs'
 import { useAuth } from '../../lib/auth-context'
-import { accountApi, type TeamMember } from '../../lib/api'
+import { accountApi } from '../../lib/api'
+import { usePendingTeam, useTeam } from '../../lib/queries'
 
 const ROLES = ['admin', 'operator']
 
 export default function TeamPage() {
   const { token, user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [members, setMembers] = useState<TeamMember[]>([])
-  const [pending, setPending] = useState<TeamMember[]>([])
+  const teamQuery = useTeam()
+  const pendingQuery = usePendingTeam(isAdmin)
   const [pendingRole, setPendingRole] = useState<Record<string, string>>({})
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    if (!token) return
-    setLoading(true)
-    setError(null)
-    try {
-      const [m, p] = await Promise.all([
-        accountApi.getTeam(token),
-        isAdmin ? accountApi.getPending(token) : Promise.resolve<TeamMember[]>([]),
-      ])
-      setMembers(m)
-      setPending(p)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được team')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, isAdmin])
+  const members = teamQuery.data ?? []
+  const pending = pendingQuery.data ?? []
+  const loading = teamQuery.isLoading
+  const queryError = teamQuery.error ?? pendingQuery.error
+  const error =
+    mutationError ?? (queryError instanceof Error ? queryError.message : queryError ? 'Không tải được team' : null)
 
-  useEffect(() => {
-    load()
-  }, [load])
+  // Approve/reject change both lists; refresh whichever are loaded.
+  async function refresh() {
+    await Promise.all([teamQuery.refetch(), isAdmin ? pendingQuery.refetch() : Promise.resolve()])
+  }
 
   async function approve(id: string) {
     if (!token) return
     try {
       await accountApi.approveUser(token, id, pendingRole[id] ?? 'operator')
-      await load()
+      await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Duyệt thất bại')
+      setMutationError(err instanceof Error ? err.message : 'Duyệt thất bại')
     }
   }
 
@@ -52,9 +42,9 @@ export default function TeamPage() {
     if (!token) return
     try {
       await accountApi.rejectUser(token, id)
-      await load()
+      await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Từ chối thất bại')
+      setMutationError(err instanceof Error ? err.message : 'Từ chối thất bại')
     }
   }
 

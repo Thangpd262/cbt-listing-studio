@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Copy, Plus, Pencil, Trash2, Truck } from 'lucide-react'
 import Layout from '../components/Layout'
 import ConfigOverrideEditor, { type EditableConfig } from '../components/ConfigOverrideEditor'
 import { useAuth } from '../lib/auth-context'
-import { accountApi, userConfigApi, type SellingAccount } from '../lib/api'
+import { userConfigApi } from '../lib/api'
+import { useSellingAccounts, useUserConfigs } from '../lib/queries'
 import { SYSTEM_CONFIGS, MY_CONFIGS } from '../lib/sample-data'
 
 type Tab = 'sys' | 'my'
@@ -30,62 +31,37 @@ function note(overrides: Record<string, unknown>) {
 }
 
 export default function ConfigsPage() {
-  const { apiKey, token } = useAuth()
+  const { apiKey } = useAuth()
+  const configsQuery = useUserConfigs()
+  const sellingQuery = useSellingAccounts()
   const [tab, setTab] = useState<Tab>('sys')
-  const [rows, setRows] = useState<Row[]>(SAMPLE_ROWS)
-  const [usingSample, setUsingSample] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<EditableConfig | null>(null)
-
-  // Selling accounts (Amazon) để fetch shipping templates
-  const [sellingAccounts, setSellingAccounts] = useState<SellingAccount[]>([])
   const [sellingAccountId, setSellingAccountId] = useState<string | null>(null)
 
-  // Load selling accounts từ account service
-  useEffect(() => {
-    if (!token) return
-    accountApi
-      .getSellingAccounts(token)
-      .then((accounts) => {
-        const amz = accounts.filter((a) => a.platform === 'amazon' && a.is_active)
-        setSellingAccounts(amz)
-        if (amz.length > 0) setSellingAccountId((prev) => prev ?? amz[0].id)
-      })
-      .catch(() => {})
-  }, [token])
+  // No API key (or a failed fetch) → local sample list, mutated in place.
+  const usingSample = !apiKey || configsQuery.isError
+  const [sampleRows, setSampleRows] = useState<Row[]>(SAMPLE_ROWS)
+  const rows: Row[] = usingSample
+    ? sampleRows
+    : (configsQuery.data ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        based_on: r.based_on,
+        overrides: r.overrides ?? {},
+        shipping_template_name: r.shipping_template_name ?? null,
+      }))
 
-  const load = useCallback(async () => {
-    if (!apiKey) {
-      setRows(SAMPLE_ROWS)
-      setUsingSample(true)
-      return
-    }
-    try {
-      const data = await userConfigApi.list(apiKey)
-      setRows(
-        data.map((r) => ({
-          id: r.id,
-          name: r.name,
-          based_on: r.based_on,
-          overrides: r.overrides ?? {},
-          shipping_template_name: r.shipping_template_name ?? null,
-        }))
-      )
-      setUsingSample(false)
-    } catch {
-      setRows(SAMPLE_ROWS)
-      setUsingSample(true)
-    }
-  }, [apiKey])
-
+  // Amazon selling accounts drive the shipping-template picker.
+  const sellingAccounts = (sellingQuery.data ?? []).filter((a) => a.platform === 'amazon' && a.is_active)
   useEffect(() => {
-    load()
-  }, [load])
+    if (sellingAccounts.length > 0) setSellingAccountId((prev) => prev ?? sellingAccounts[0].id)
+  }, [sellingAccounts])
 
   async function clone(key: string, label: string) {
     const name = `${label} (bản sao)`
     if (usingSample || !apiKey) {
-      setRows((c) => [
+      setSampleRows((c) => [
         ...c,
         { id: `my-${Date.now()}`, name, based_on: key, overrides: {}, shipping_template_name: null },
       ])
@@ -95,7 +71,7 @@ export default function ConfigsPage() {
     setBusy(true)
     try {
       await userConfigApi.create(apiKey, { name, based_on: key, overrides: {} })
-      await load()
+      await configsQuery.refetch()
       setTab('my')
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Nhân bản thất bại')
@@ -106,13 +82,13 @@ export default function ConfigsPage() {
 
   async function remove(id: string) {
     if (usingSample || !apiKey) {
-      setRows((c) => c.filter((x) => x.id !== id))
+      setSampleRows((c) => c.filter((x) => x.id !== id))
       return
     }
     setBusy(true)
     try {
       await userConfigApi.remove(apiKey, id)
-      await load()
+      await configsQuery.refetch()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Xoá thất bại')
     } finally {
@@ -259,7 +235,7 @@ export default function ConfigsPage() {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
-            load()
+            configsQuery.refetch()
           }}
         />
       )}
