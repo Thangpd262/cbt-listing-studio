@@ -85,9 +85,30 @@ export default function ConfigOverrideEditor({
     setSyncingTemplates(true)
     setTemplateError(null)
     try {
+      // POST kick off report — trả về { status: 'syncing' } hoặc 'ready' nếu cache còn tươi
       const r = await shippingTemplateApi.sync(apiKey, sellingAccountId)
-      setTemplates(r.templates)
-      if (r.error) setTemplateError(r.error)
+      if (r.templates.length > 0) {
+        setTemplates(r.templates)
+        setSyncingTemplates(false)
+        return
+      }
+      // Poll GET mỗi 5s cho đến khi status === 'ready' hoặc 'error'
+      for (let i = 0; i < 24; i++) { // tối đa 2 phút
+        await new Promise((res) => setTimeout(res, 5000))
+        const poll = await shippingTemplateApi.list(apiKey, sellingAccountId)
+        if (poll.status === 'ready') {
+          setTemplates(poll.templates)
+          setSyncingTemplates(false)
+          return
+        }
+        if (poll.status === 'error') {
+          setTemplateError(poll.error ?? 'Sync thất bại')
+          setSyncingTemplates(false)
+          return
+        }
+        // status === 'syncing' → tiếp tục poll
+      }
+      setTemplateError('Hết thời gian chờ. Thử lại sau.')
     } catch (e) {
       setTemplateError(e instanceof Error ? e.message : 'Sync thất bại')
     } finally {

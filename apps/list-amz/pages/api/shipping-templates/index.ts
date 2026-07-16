@@ -6,8 +6,15 @@ const SP_API_BASE = process.env.SP_API_BASE || 'https://sellingpartnerapi-na.ama
 const DEFAULT_MARKETPLACE = 'ATVPDKIKX0DER'
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
-// GET  ?selling_account_id=xxx  → cached templates (từ amz_shipping_templates_cache)
-// POST { selling_account_id, force? } → sync từ SP-API Reports, cache, trả về list
+// GET  ?selling_account_id=xxx
+//   → trả về cached templates hoặc check tiến độ report đang chạy
+//   → { status: 'ready'|'syncing'|'empty', templates: string[], synced_at, error? }
+//
+// POST { selling_account_id, force? }
+//   → kick off SP-API report, lưu reportId vào amz_shipping_templates_sync
+//   → { status: 'syncing' }
+//
+// Client tự poll GET mỗi 5s cho đến khi status === 'ready'.
 export default withAuth(async (req, res, auth) => {
   const supabase = createSupabaseClient()
   const sellingAccountId =
@@ -17,23 +24,9 @@ export default withAuth(async (req, res, auth) => {
 
   if (!sellingAccountId) return error(res, 400, 'selling_account_id là bắt buộc')
 
-  // ── GET: trả về cache ─────────────────────────────────────────────────────
+  // ── GET: trả về cache hoặc tiến độ ─────────────────────────────────────
   if (req.method === 'GET') {
-    const { data } = await supabase
-      .from('amz_shipping_templates_cache')
-      .select('template_name, synced_at')
-      .eq('account_id', auth.account_id)
-      .eq('selling_account_id', sellingAccountId)
-      .order('template_name')
-    return ok(res, {
-      templates: (data ?? []).map((r) => r.template_name),
-      synced_at: data?.[0]?.synced_at ?? null,
-    })
-  }
-
-  // ── POST: sync từ SP-API Reports ──────────────────────────────────────────
-  if (req.method === 'POST') {
-    // Kiểm tra cache còn tươi không (< 1h) trừ khi force=true
+    // 1. Kiểm tra cache còn tươi không
     const { data: cached } = await supabase
       .from('amz_shipping_templates_cache')
       .select('template_name, synced_at')
@@ -41,35 +34,83 @@ export default withAuth(async (req, res, auth) => {
       .eq('selling_account_id', sellingAccountId)
       .order('template_name')
 
-    const cacheAge = cached?.[0]?.synced_at
-      ? Date.now() - new Date(cached[0].synced_at).getTime()
-      : Infinity
+    if (cached && cached.length > 0) {
+      const cacheAge = Date.now() - new Date(cached[0].synced_at).getTime()
+      if (cacheAge < CACHE_TTL_MS) {
+        return ok(res, {
+          status: 'ready',
+          templates: cached.map((r) => r.template_name),
+          synced_at: cached[0].synced_at,
+        })
+      }
+    }
 
-    if (cacheAge < CACHE_TTL_MS && !req.body?.force) {
+    // 2. Xem có job đang chạy không
+    const { data: job } = await supabase
+      .from('amz_shipping_templates_sync')
+      .select('report_id, status, error_message')
+      .eq('account_id', auth.account_id)
+      .eq('selling_account_id', sellingAccountId)
+      .maybeSingle()
+
+    if (!job || job.status === 'idle') {
+      return ok(res, { status: 'empty', templates: [] })
+    }
+
+    if (job.status === 'failed') {
       return ok(res, {
-        templates: (cached ?? []).map((r) => r.template_name),
-        synced_at: cached?.[0]?.synced_at ?? null,
-        from_cache: true,
+        status: 'error',
+        templates: cached?.map((r) => r.template_name) ?? [],
+        error: job.error_message ?? 'Sync thất bại',
       })
     }
 
+    // status === 'pending' — check SP-API report tiến độ
     try {
       const credentials = await getSellingAccountCredentials(sellingAccountId)
       const accessToken = await getAccessToken(credentials, sellingAccountId)
+      const headers = spHeaders(accessToken)
 
-      // Lấy marketplace cho selling account này
+      const pollRes = await fetch(
+        `${SP_API_BASE}/reports/2021-06-30/reports/${job.report_id}`,
+        { headers }
+      )
+      if (!pollRes.ok) throw new Error(`Poll failed (${pollRes.status})`)
+      const report = (await pollRes.json()) as {
+        processingStatus: string
+        reportDocumentId?: string
+      }
+
+      if (report.processingStatus === 'FATAL' || report.processingStatus === 'CANCELLED') {
+        await supabase
+          .from('amz_shipping_templates_sync')
+          .update({ status: 'failed', error_message: `Report ${report.processingStatus}`, updated_at: new Date().toISOString() })
+          .eq('account_id', auth.account_id)
+          .eq('selling_account_id', sellingAccountId)
+        return ok(res, { status: 'error', templates: [], error: `Report ${report.processingStatus}` })
+      }
+
+      if (report.processingStatus !== 'DONE') {
+        // IN_QUEUE hoặc IN_PROGRESS
+        return ok(res, { status: 'syncing', templates: [] })
+      }
+
+      // DONE — download + parse + cache
       const { data: config } = await supabase
         .from('amz_product_configs')
         .select('marketplace_id')
         .eq('selling_account_id', sellingAccountId)
         .maybeSingle()
       const marketplaceId = config?.marketplace_id || DEFAULT_MARKETPLACE
+      void marketplaceId // used implicitly via report content
 
-      const templates = await syncShippingTemplatesFromReports(accessToken, marketplaceId)
+      const templates = await downloadAndParseReport(
+        report.reportDocumentId!,
+        accessToken
+      )
 
+      const now = new Date().toISOString()
       if (templates.length > 0) {
-        const now = new Date().toISOString()
-        // Xóa cache cũ rồi insert mới
         await supabase
           .from('amz_shipping_templates_cache')
           .delete()
@@ -86,18 +127,92 @@ export default withAuth(async (req, res, auth) => {
         )
       }
 
-      return ok(res, { templates, synced_at: new Date().toISOString(), from_cache: false })
+      await supabase
+        .from('amz_shipping_templates_sync')
+        .update({ status: 'idle', updated_at: now })
+        .eq('account_id', auth.account_id)
+        .eq('selling_account_id', sellingAccountId)
+
+      return ok(res, { status: 'ready', templates, synced_at: now })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Sync thất bại'
-      // Trả stale cache khi lỗi
-      if (cached && cached.length > 0) {
-        return ok(res, {
-          templates: cached.map((r) => r.template_name),
-          synced_at: cached[0].synced_at,
-          from_cache: true,
-          error: msg,
-        })
+      const msg = err instanceof Error ? err.message : 'Lỗi không xác định'
+      return ok(res, {
+        status: 'error',
+        templates: cached?.map((r) => r.template_name) ?? [],
+        error: msg,
+      })
+    }
+  }
+
+  // ── POST: kick off report ────────────────────────────────────────────────
+  if (req.method === 'POST') {
+    // Kiểm tra cache còn tươi — skip nếu không force
+    if (!req.body?.force) {
+      const { data: cached } = await supabase
+        .from('amz_shipping_templates_cache')
+        .select('template_name, synced_at')
+        .eq('account_id', auth.account_id)
+        .eq('selling_account_id', sellingAccountId)
+        .limit(1)
+      if (cached?.[0]?.synced_at) {
+        const age = Date.now() - new Date(cached[0].synced_at).getTime()
+        if (age < CACHE_TTL_MS) {
+          const { data: all } = await supabase
+            .from('amz_shipping_templates_cache')
+            .select('template_name')
+            .eq('account_id', auth.account_id)
+            .eq('selling_account_id', sellingAccountId)
+            .order('template_name')
+          return ok(res, {
+            status: 'ready',
+            templates: (all ?? []).map((r) => r.template_name),
+            synced_at: cached[0].synced_at,
+          })
+        }
       }
+    }
+
+    try {
+      const credentials = await getSellingAccountCredentials(sellingAccountId)
+      const accessToken = await getAccessToken(credentials, sellingAccountId)
+
+      const { data: config } = await supabase
+        .from('amz_product_configs')
+        .select('marketplace_id')
+        .eq('selling_account_id', sellingAccountId)
+        .maybeSingle()
+      const marketplaceId = config?.marketplace_id || DEFAULT_MARKETPLACE
+
+      const createRes = await fetch(`${SP_API_BASE}/reports/2021-06-30/reports`, {
+        method: 'POST',
+        headers: spHeaders(accessToken),
+        body: JSON.stringify({
+          reportType: 'GET_MERCHANT_LISTINGS_ALL_DATA',
+          marketplaceIds: [marketplaceId],
+        }),
+      })
+      if (!createRes.ok) {
+        throw new Error(`Create report failed (${createRes.status}): ${await createRes.text()}`)
+      }
+      const { reportId } = (await createRes.json()) as { reportId: string }
+      if (!reportId) throw new Error('SP-API không trả về reportId')
+
+      // Lưu reportId vào sync job table
+      await supabase.from('amz_shipping_templates_sync').upsert(
+        {
+          account_id: auth.account_id,
+          selling_account_id: sellingAccountId,
+          report_id: reportId,
+          status: 'pending',
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'account_id,selling_account_id' }
+      )
+
+      return ok(res, { status: 'syncing' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Không thể tạo report'
       return error(res, 500, msg)
     }
   }
@@ -105,58 +220,23 @@ export default withAuth(async (req, res, auth) => {
   return error(res, 405, 'Method not allowed')
 })
 
-// ── SP-API Reports helper ─────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function syncShippingTemplatesFromReports(
-  accessToken: string,
-  marketplaceId: string
-): Promise<string[]> {
-  const headers: Record<string, string> = {
+function spHeaders(accessToken: string): Record<string, string> {
+  return {
     'x-amz-access-token': accessToken,
     'Content-Type': 'application/json',
     'User-Agent': 'CBT-Listing-Studio/1.0 (Language=TypeScript)',
   }
+}
 
-  // 1. Tạo report
-  const createRes = await fetch(`${SP_API_BASE}/reports/2021-06-30/reports`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      reportType: 'GET_MERCHANT_LISTINGS_ALL_DATA',
-      marketplaceIds: [marketplaceId],
-    }),
-  })
-  if (!createRes.ok) {
-    throw new Error(`Create report failed (${createRes.status}): ${await createRes.text()}`)
-  }
-  const { reportId } = (await createRes.json()) as { reportId: string }
-  if (!reportId) throw new Error('SP-API không trả về reportId')
-
-  // 2. Poll đến khi DONE (tối đa ~55s — 11 lần × 5s)
-  let reportDocumentId: string | null = null
-  for (let i = 0; i < 11; i++) {
-    await sleep(5000)
-    const pollRes = await fetch(`${SP_API_BASE}/reports/2021-06-30/reports/${reportId}`, { headers })
-    if (!pollRes.ok) throw new Error(`Poll report failed (${pollRes.status})`)
-    const report = (await pollRes.json()) as {
-      processingStatus: string
-      reportDocumentId?: string
-    }
-    if (report.processingStatus === 'DONE') {
-      reportDocumentId = report.reportDocumentId ?? null
-      break
-    }
-    if (report.processingStatus === 'FATAL' || report.processingStatus === 'CANCELLED') {
-      throw new Error(`Report kết thúc với trạng thái: ${report.processingStatus}`)
-    }
-    // IN_QUEUE / IN_PROGRESS → tiếp tục poll
-  }
-  if (!reportDocumentId) throw new Error('Report không hoàn thành trong thời gian cho phép')
-
-  // 3. Lấy URL download
+async function downloadAndParseReport(
+  reportDocumentId: string,
+  accessToken: string
+): Promise<string[]> {
   const docRes = await fetch(
     `${SP_API_BASE}/reports/2021-06-30/documents/${reportDocumentId}`,
-    { headers }
+    { headers: spHeaders(accessToken) }
   )
   if (!docRes.ok) throw new Error(`Get document failed (${docRes.status})`)
   const { url, compressionAlgorithm } = (await docRes.json()) as {
@@ -164,35 +244,27 @@ async function syncShippingTemplatesFromReports(
     compressionAlgorithm?: string
   }
 
-  // 4. Download CSV (có thể là GZIP)
   const csvRes = await fetch(url)
   if (!csvRes.ok) throw new Error(`Download CSV failed (${csvRes.status})`)
 
   let csvText: string
   if (compressionAlgorithm === 'GZIP') {
     const { gunzipSync } = await import('zlib')
-    const buf = Buffer.from(await csvRes.arrayBuffer())
-    csvText = gunzipSync(buf).toString('utf-8')
+    csvText = gunzipSync(Buffer.from(await csvRes.arrayBuffer())).toString('utf-8')
   } else {
     csvText = await csvRes.text()
   }
 
-  // 5. Parse TSV — tìm cột merchant-shipping-group-name
   const lines = csvText.split('\n')
   if (lines.length < 2) return []
-  const headerCols = lines[0].split('\t').map((h) => h.trim().toLowerCase())
-  const col = headerCols.indexOf('merchant-shipping-group-name')
+  const headers = lines[0].split('\t').map((h) => h.trim().toLowerCase())
+  const col = headers.indexOf('merchant-shipping-group-name')
   if (col === -1) return []
 
   const names = new Set<string>()
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split('\t')
-    const name = cols[col]?.trim()
+    const name = lines[i].split('\t')[col]?.trim()
     if (name) names.add(name)
   }
   return [...names].sort()
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

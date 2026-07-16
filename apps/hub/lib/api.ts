@@ -538,9 +538,9 @@ export const userConfigApi = {
 }
 
 export type ShippingTemplatesResponse = {
+  status: 'ready' | 'syncing' | 'empty' | 'error'
   templates: string[]
-  synced_at: string | null
-  from_cache?: boolean
+  synced_at?: string | null
   error?: string
 }
 
