@@ -19,6 +19,7 @@ export type SearchListingsItem = {
   summaries?: Array<{
     asin?: string
     itemName?: string
+    productType?: string
     status?: string[] | string
     mainImage?: { link?: string }
   }>

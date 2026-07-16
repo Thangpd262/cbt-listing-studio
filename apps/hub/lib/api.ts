@@ -350,7 +350,19 @@ export type AmzCachedListing = {
   price: number | null
   quantity: number | null
   image_url: string | null
+  product_type: string | null
+  niche: string | null
+  created_at: string
   synced_at: string
+}
+
+// One page of cached listings (server-side pagination on the hub-local route).
+export type CachedListingsPage<T> = {
+  listings: T[]
+  last_synced_at: string | null
+  total: number
+  page: number
+  limit: number
 }
 
 // A cached live Walmart listing (from wmt_listings_cache).
@@ -375,10 +387,34 @@ export const listAmzApi = {
     const res = await fetch(`${LIST_AMZ_URL}/api/products${q}`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<AmzProduct[]>(res)
   },
-  // Cached live listings — read from Supabase via the hub-local route.
-  async getCachedListings(apiKey: string) {
-    const res = await fetch('/api/amz-listings', { headers: apiKeyHeaders(apiKey) })
-    return unwrap<CachedListings<AmzCachedListing>>(res)
+  // Cached live listings — read from Supabase via the hub-local route,
+  // server-side paginated + filtered.
+  async getCachedListings(
+    apiKey: string,
+    params: { page?: number; limit?: number; search?: string; type?: string; niche?: string } = {}
+  ) {
+    const q = new URLSearchParams()
+    q.set('page', String(params.page ?? 1))
+    q.set('limit', String(params.limit ?? 20))
+    if (params.search) q.set('search', params.search)
+    if (params.type) q.set('type', params.type)
+    if (params.niche) q.set('niche', params.niche)
+    const res = await fetch(`/api/amz-listings?${q}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<CachedListingsPage<AmzCachedListing>>(res)
+  },
+  // Set a cached listing's product group (niche). Persists across syncs.
+  async updateNiche(apiKey: string, id: string, niche: string) {
+    const res = await fetch(`/api/amz-listings/${id}`, {
+      method: 'PATCH',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify({ niche }),
+    })
+    return unwrap<{ id: string; niche: string | null }>(res)
+  },
+  // Drop a listing from the cache view (re-added on next sync if still live).
+  async deleteCached(apiKey: string, id: string) {
+    const res = await fetch(`/api/amz-listings/${id}`, { method: 'DELETE', headers: apiKeyHeaders(apiKey) })
+    return unwrap<{ id: string; deleted: boolean }>(res)
   },
   // Trigger a full SP-API → cache sync (list-amz service).
   async syncListings(apiKey: string) {
@@ -441,6 +477,7 @@ export type UserConfig = {
   based_on: string // product_configs.key
   product_type?: string | null // resolved from the base config
   overrides: Record<string, unknown>
+  shipping_template_name?: string | null
   created_at: string
 }
 
@@ -486,7 +523,7 @@ export const userConfigApi = {
     })
     return unwrap<UserConfig>(res)
   },
-  async update(apiKey: string, id: string, body: { name?: string; overrides?: Record<string, unknown> }) {
+  async update(apiKey: string, id: string, body: { name?: string; overrides?: Record<string, unknown>; shipping_template_name?: string | null }) {
     const res = await fetch(`/api/user-configs/${id}`, {
       method: 'PATCH',
       headers: apiKeyHeaders(apiKey),
@@ -497,6 +534,31 @@ export const userConfigApi = {
   async remove(apiKey: string, id: string) {
     const res = await fetch(`/api/user-configs/${id}`, { method: 'DELETE', headers: apiKeyHeaders(apiKey) })
     return unwrap<{ id: string; deleted: boolean }>(res)
+  },
+}
+
+export type ShippingTemplatesResponse = {
+  templates: string[]
+  synced_at: string | null
+  from_cache?: boolean
+  error?: string
+}
+
+export const shippingTemplateApi = {
+  async list(apiKey: string, sellingAccountId: string) {
+    const res = await fetch(
+      `/api/shipping-templates?selling_account_id=${encodeURIComponent(sellingAccountId)}`,
+      { headers: apiKeyHeaders(apiKey) }
+    )
+    return unwrap<ShippingTemplatesResponse>(res)
+  },
+  async sync(apiKey: string, sellingAccountId: string, force = false) {
+    const res = await fetch('/api/shipping-templates', {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify({ selling_account_id: sellingAccountId, force }),
+    })
+    return unwrap<ShippingTemplatesResponse>(res)
   },
 }
 

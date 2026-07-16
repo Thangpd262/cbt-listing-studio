@@ -28,6 +28,7 @@ function toCacheRow(accountId: string, marketplaceId: string, item: SearchListin
     asin: s.asin ?? '',
     sku: item.sku ?? null,
     title: s.itemName ?? null,
+    product_type: s.productType ?? null,
     status,
     price: item.offers?.[0]?.price?.amount ?? null,
     quantity: item.fulfillmentAvailability?.[0]?.quantity ?? null,

@@ -1,25 +1,60 @@
 import { withAuth, ok, error, createSupabaseClient } from '@cbt/shared'
 
 // GET /api/amz-listings — the cached Amazon listings for the account (populated
-// by list-amz's /api/listings/sync). Returns rows + cache freshness. Never calls
-// SP-API directly.
+// by list-amz's /api/listings/sync). Server-side paginated + filtered so the
+// page loads one screen instead of the whole catalogue. Never calls SP-API.
+//
+// Query params: page, limit (0 = all), search, type (product_type), niche.
+// Response data: { listings, last_synced_at, total, page, limit }.
+const COLS =
+  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, synced_at'
+
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')
 
+  const page = Math.max(1, parseInt(req.query.page as string) || 1)
+  const rawLimit = parseInt(req.query.limit as string)
+  const limit = Number.isFinite(rawLimit) && rawLimit >= 0 ? rawLimit : 20 // 0 = all
+  const type = ((req.query.type as string) || '').trim()
+  const niche = ((req.query.niche as string) || '').trim()
+  // Strip PostgREST filter metacharacters so free text can't break the .or() grammar.
+  const search = ((req.query.search as string) || '').trim().replace(/[(),*]/g, ' ')
+
   const supabase = createSupabaseClient()
-  const { data, error: dbErr } = await supabase
+
+  let query = supabase
     .from('amz_listings_cache')
-    .select('id, marketplace_id, asin, sku, title, status, price, quantity, image_url, synced_at')
+    .select(COLS, { count: 'exact' })
     .eq('account_id', auth.account_id)
-    .order('synced_at', { ascending: false })
-    .limit(1000)
+
+  if (search) query = query.or(`sku.ilike.%${search}%,title.ilike.%${search}%,asin.ilike.%${search}%`)
+  if (type) query = query.eq('product_type', type)
+  if (niche) query = query.eq('niche', niche)
+
+  query = query.order('synced_at', { ascending: false })
+
+  if (limit > 0) {
+    const from = (page - 1) * limit
+    query = query.range(from, from + limit - 1)
+  }
+
+  const { data, error: dbErr, count } = await query
   if (dbErr) return error(res, 500, dbErr.message)
 
-  const listings = data ?? []
-  // Freshest synced_at across the set = last sync time.
-  const lastSyncedAt = listings.reduce<string | null>(
-    (max, r) => (!max || r.synced_at > max ? r.synced_at : max),
-    null
-  )
-  return ok(res, { listings, last_synced_at: lastSyncedAt, total_count: listings.length })
+  // Freshest sync time across the whole account (independent of the current page/filter).
+  const { data: fresh } = await supabase
+    .from('amz_listings_cache')
+    .select('synced_at')
+    .eq('account_id', auth.account_id)
+    .order('synced_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return ok(res, {
+    listings: data ?? [],
+    last_synced_at: fresh?.synced_at ?? null,
+    total: count ?? (data ?? []).length,
+    page,
+    limit,
+  })
 })
