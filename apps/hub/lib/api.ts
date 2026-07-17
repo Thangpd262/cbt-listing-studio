@@ -172,6 +172,8 @@ export type CrawlListing = {
   status: 'ingested' | 'analyzing' | 'analyzed' | 'failed'
   created_at: string
   created_by_email?: string | null
+  // Scene-analysis mood, flattened by the crawl listings API (null until analyzed).
+  mood?: string | null
 }
 
 export type PaginatedResponse<T> = {

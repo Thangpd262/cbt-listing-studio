@@ -12,7 +12,7 @@ export default withAuth(async (req, res, auth) => {
 
     let query = supabase
       .from('crawl_listings')
-      .select('*, creator:app_users!created_by(email)', { count: 'exact' })
+      .select('*, creator:app_users!created_by(email), scene:listing_scene_analysis(mood)', { count: 'exact' })
       .eq('account_id', auth.account_id)
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1)
@@ -31,10 +31,15 @@ export default withAuth(async (req, res, auth) => {
     const { data, error: dbError, count } = await query
     if (dbError) return error(res, 500, dbError.message)
 
-    // Flatten the embedded creator email onto each row.
+    // Flatten the embedded creator email + scene mood onto each row.
+    // scene is one-to-one (UNIQUE listing_id) but PostgREST returns an array.
     const rows = (data ?? []).map((row) => {
-      const { creator, ...listing } = row as typeof row & { creator: { email: string } | null }
-      return { ...listing, created_by_email: creator?.email ?? null }
+      const { creator, scene, ...listing } = row as typeof row & {
+        creator: { email: string } | null
+        scene: Array<{ mood: string | null }> | { mood: string | null } | null
+      }
+      const mood = Array.isArray(scene) ? scene[0]?.mood ?? null : scene?.mood ?? null
+      return { ...listing, created_by_email: creator?.email ?? null, mood }
     })
     return paginated(res, rows, count ?? 0, page, limit)
   }

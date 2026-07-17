@@ -121,6 +121,7 @@ export default function CrawlPage() {
           etsyId: etsyListingId(l.source_url),
           sourceUrl: l.source_url ?? undefined,
           createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
+          mood: l.mood ?? undefined,
         }))
       )
     } catch (e) {

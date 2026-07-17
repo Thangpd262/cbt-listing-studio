@@ -28,6 +28,8 @@ export default withAuth(async (req, res, auth) => {
   if (req.method === 'POST') {
     const {
       selling_account_id, sku,
+      // Source crawl listing (for dedup + traceability)
+      listing_id,
       // Config-based mode
       config_key, field_values,
       // Legacy flat mode
@@ -42,6 +44,20 @@ export default withAuth(async (req, res, auth) => {
     const isConfigMode = !!(config_key && field_values && typeof field_values === 'object')
     if (!isConfigMode && !title) {
       return error(res, 400, 'title là bắt buộc (hoặc dùng config_key + field_values)')
+    }
+
+    // Block a second live ASIN for the same source listing (idempotency guard).
+    if (listing_id) {
+      const { data: existing } = await supabase
+        .from('amz_products')
+        .select('id, sku, asin')
+        .eq('account_id', auth.account_id)
+        .eq('listing_id', listing_id)
+        .not('asin', 'is', null)
+        .maybeSingle()
+      if (existing) {
+        return error(res, 409, `Listing này đã có ASIN ${existing.asin} (SKU: ${existing.sku}). Không thể tạo lần 2.`)
+      }
     }
 
     // Working copy of the config values so we can inject an AI description.
@@ -80,6 +96,7 @@ export default withAuth(async (req, res, auth) => {
       .insert({
         account_id: auth.account_id,
         selling_account_id,
+        listing_id: listing_id ?? null,
         sku,
         title: displayTitle,
         description: isConfigMode ? null : (description ?? null),

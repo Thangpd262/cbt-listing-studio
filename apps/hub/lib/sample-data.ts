@@ -56,6 +56,8 @@ export type SampleListing = {
   etsyId?: string
   sourceUrl?: string
   createdAt?: string
+  // Scene-analysis mood (used in the deterministic SKU); absent until analyzed.
+  mood?: string
 }
 
 const img = (seed: string) => `https://picsum.photos/seed/${seed}/240/240`

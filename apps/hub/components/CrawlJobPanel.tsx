@@ -232,9 +232,12 @@ export default function CrawlJobPanel({
       return
     }
     const configKey = resolveConfigKey(config)
-    // Generate the SKU now: {SHORT}-{unix10}, short-code from the config's product_type.
+    // SKU = {SHORT}-{listingId8}-{mood8}: deterministic per listing + mood, so the
+    // same listing maps to a stable SKU (short-code from the config's product_type).
     const selectedConfig = myConfigs.find((c) => c.id === config)
-    const sku = `${shortCode(selectedConfig?.productType)}-${Math.floor(Date.now() / 1000)}`
+    const listingShort = listing.id.replace(/-/g, '').slice(0, 8).toUpperCase()
+    const moodSlug = (listing.mood ?? '').replace(/\s+/g, '').slice(0, 8).toUpperCase() || 'X'
+    const sku = `${shortCode(selectedConfig?.productType)}-${listingShort}-${moodSlug}`
     const selectedUrls = images.filter((i) => selected.has(i.id)).map((i) => i.url)
     const effective = selectedUrls.length ? selectedUrls : configImages
     const mainUrl =
@@ -250,6 +253,7 @@ export default function CrawlJobPanel({
         const r = await listAmzApi.createListing(apiKey, {
           selling_account_id: sellingAccountId,
           sku,
+          listing_id: listing.id,
           config_key: configKey,
           ai_description: aiDescription,
           field_values: {
