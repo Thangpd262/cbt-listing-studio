@@ -266,8 +266,9 @@ export default function CrawlJobPanel({
           config_key: configKey,
           ai_description: aiDescription,
           field_values: {
-            item_name: title,
-            price,
+            item_name: title.trim(),
+            // Skip price if 0 so the config default kicks in instead
+            ...(parseFloat(price) > 0 ? { price } : {}),
             img: mainUrl,
             images: extraUrls.join('\n'),
             search_terms: searchTerms,
