@@ -543,6 +543,7 @@ export const listAmzApi = {
       bullet_points?: string[]
       description?: string
       images?: string[]
+      product_type?: string
       attributes?: Record<string, unknown>
     }
   ) {
@@ -575,6 +576,7 @@ export const listAmzApi = {
       description: string | null
       images: string[]
       attributes: Record<string, unknown>
+      product_type: string | null
     }>(res)
   },
   // Bulk-update bullet points / description across SKUs → one 'update' job each.

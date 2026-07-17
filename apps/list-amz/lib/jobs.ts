@@ -70,6 +70,11 @@ export async function executeJob(supabase: Supabase, jobId: string) {
         }
         listingBody = buildListingBodyFromConfig(config as ProductConfig, fieldValues, marketplaceId)
       } else {
+        // productType must be the SP-API-confirmed value (via getListingItem) —
+        // a null/wrong cache value produces an invalid PUT body.
+        if (!(job.payload as ListingPayload).product_type) {
+          throw new Error('product_type không xác định — không thể update listing này.')
+        }
         listingBody = buildListingBody(job.payload as ListingPayload, marketplaceId)
       }
       result = await client.putListing(sellerId, product.sku, listingBody)

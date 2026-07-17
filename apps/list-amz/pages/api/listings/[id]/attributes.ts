@@ -51,7 +51,9 @@ export default withAuth(async (req, res, auth) => {
   try {
     const item = await client.getListingItem(credentials.seller_id, sku)
     const attributes = (item.attributes ?? {}) as Record<string, AttrValue[] | undefined>
-    return ok(res, { ...deriveEditFields(attributes), attributes })
+    // Prefer SP-API's productType over the cache copy (authoritative + correct format).
+    const product_type = item.summaries?.[0]?.productType ?? null
+    return ok(res, { ...deriveEditFields(attributes), attributes, product_type })
   } catch (err) {
     return error(res, 502, err instanceof Error ? err.message : 'SP-API getListingItem thất bại')
   }

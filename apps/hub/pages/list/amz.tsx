@@ -141,6 +141,8 @@ export default function ListAmzPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   // Live attributes are fetched on modal open (not carried in the sync batch).
   const [editAttrsLoading, setEditAttrsLoading] = useState(false)
+  // Authoritative productType from SP-API (cache copy may be null / wrong format).
+  const [editProductType, setEditProductType] = useState<string | null>(null)
   // Tab 1 — Nội dung
   const [editItemName, setEditItemName] = useState('')
   const [editBullets, setEditBullets] = useState<string[]>(['', '', '', '', ''])
@@ -320,6 +322,7 @@ export default function ListAmzPage() {
     setAttrErrors({})
     setNewAttrKey('')
     setNewAttrValue('')
+    setEditProductType(row.product_type ?? null) // baseline; refined by the fetch below
 
     // The cache omits attributes, so bullets/description/images above come from a
     // (usually empty) cache copy. Pull the live values from SP-API on open; on any
@@ -335,6 +338,7 @@ export default function ListAmzPage() {
           }
           if (d.description) setEditDescription(d.description)
           if (d.images?.length) setEditImages(d.images)
+          if (d.product_type) setEditProductType(d.product_type)
         })
         .catch(() => {})
         .finally(() => setEditAttrsLoading(false))
@@ -377,11 +381,15 @@ export default function ListAmzPage() {
   // Full content payload — sent whole on every content/images/attrs save so the
   // server's listing rebuild never drops an unedited field (destructive-update guard).
   function contentBody(extras: Record<string, unknown>) {
+    // Use the SP-API-confirmed productType (lazy-loaded); omit when unknown rather
+    // than overwriting the stored value with null.
+    const productType = editProductType ?? editTarget?.product_type ?? undefined
     return {
       title: editItemName,
       bullet_points: editBullets.filter((b) => b.trim()),
       description: editDescription || undefined,
       images: editImages,
+      ...(productType ? { product_type: productType } : {}),
       attributes: buildAttributes(extras),
     }
   }
