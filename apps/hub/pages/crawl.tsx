@@ -126,6 +126,7 @@ export default function CrawlPage() {
           hasJob: (l.status as string) === 'job_created',
           images: l.images ?? [],
           aiImages: l.ai_images ?? [],
+          extraImages: l.extra_images ?? [],
           email: l.created_by_email ?? undefined,
           etsyId: l.platform === 'aliexpress'
             ? aliexpressListingId(l.source_url)

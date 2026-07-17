@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink } from 'lucide-react'
+import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink, Link, Plus } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
 import ImageLightbox from './ImageLightbox'
 import ListingAiCost from './ListingAiCost'
 import { type SampleListing } from '../lib/sample-data'
 
-type GalleryImage = { id: string; url: string; ai?: boolean }
+type GalleryImage = { id: string; url: string; ai?: boolean; extra?: boolean }
 
 export type PanelGroup = { id: string; name: string }
 export type PanelConfig = { id: string; name: string; from: string; productType?: string | null; imageUrls?: string[]; overrides?: Record<string, string> }
@@ -68,10 +68,17 @@ export default function CrawlJobPanel({
   const [images, setImages] = useState<GalleryImage[]>(() => [
     ...listing.images.map((url, i) => ({ id: `etsy-${i}`, url })),
     ...listing.aiImages.map((url, i) => ({ id: `ai-${i}`, url, ai: true })),
+    ...listing.extraImages.map((url, i) => ({ id: `extra-${i}`, url, extra: true })),
   ])
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...listing.aiImages.map((_, i) => `ai-${i}`)])
+    () => new Set([
+      ...listing.images.map((_, i) => `etsy-${i}`),
+      ...listing.aiImages.map((_, i) => `ai-${i}`),
+      ...listing.extraImages.map((_, i) => `extra-${i}`),
+    ])
   )
+  // URL input for manually adding extra images.
+  const [urlInput, setUrlInput] = useState('')
   const [mainId, setMainId] = useState<string | null>(null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
@@ -89,8 +96,9 @@ export default function CrawlJobPanel({
   const [regenId, setRegenId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const etsyImages = useMemo(() => images.filter((i) => !i.ai), [images])
+  const etsyImages = useMemo(() => images.filter((i) => !i.ai && !i.extra), [images])
   const aiImages = useMemo(() => images.filter((i) => i.ai), [images])
+  const extraImages = useMemo(() => images.filter((i) => i.extra), [images])
   const selectedCount = images.filter((i) => selected.has(i.id)).length
   const configImages = useMemo(
     () => myConfigs.find((c) => c.id === config)?.imageUrls ?? [],
@@ -120,6 +128,42 @@ export default function CrawlJobPanel({
     } catch {
       // ignore
     }
+  }
+
+  // Persist extra (manually-added) image URLs back to the crawl record.
+  async function persistExtraImages(urls: string[]) {
+    if (!apiKey) return
+    try {
+      await crawlApi.updateListing(apiKey, listing.id, { extra_images: urls })
+    } catch {
+      // ignore
+    }
+  }
+
+  // Parse the URL textarea, add valid-looking URLs as extra images.
+  function addExtraUrls() {
+    const urls = urlInput
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter((u) => u.startsWith('http'))
+    if (!urls.length) return
+    const newImgs = urls.map((url, i) => ({
+      id: `extra-${Date.now()}-${i}`,
+      url,
+      extra: true as const,
+    }))
+    const updatedImages = [...images, ...newImgs]
+    setImages(updatedImages)
+    setSelected((s) => {
+      const n = new Set(s)
+      newImgs.forEach((img) => n.add(img.id))
+      return n
+    })
+    setUrlInput('')
+    persistExtraImages([
+      ...extraImages.map((i) => i.url),
+      ...urls,
+    ])
   }
 
   // (b) debounce title changes → PUT crawl listing. Skips the initial render.
@@ -160,6 +204,7 @@ export default function CrawlJobPanel({
     if (refImageId === id) setRefImageId(null)
     // All image types are persisted → removing one must sync to the DB.
     if (img?.ai) persistAiImages(aiImages.filter((i) => i.id !== id).map((i) => i.url))
+    else if (img?.extra) persistExtraImages(extraImages.filter((i) => i.id !== id).map((i) => i.url))
     else persistEtsyImages(etsyImages.filter((i) => i.id !== id).map((i) => i.url))
   }
 
@@ -492,6 +537,40 @@ export default function CrawlJobPanel({
               </div>
             )
           )}
+        </div>
+
+        {/* Extra images — manually added by URL */}
+        <div data-testid="extra-images-section">
+          <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
+            <Link size={12} className="text-brand" /> Ảnh thêm bằng link <span className="text-muted">({extraImages.length})</span>
+          </div>
+          {extraImages.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {extraImages.map((img) => (
+                <Thumb key={img.id} img={img} />
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <textarea
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addExtraUrls() }
+              }}
+              placeholder="Dán 1 hoặc nhiều URL ảnh (mỗi dòng 1 link)"
+              rows={2}
+              className="field min-h-[44px] flex-1 resize-y text-[12px]"
+            />
+            <button
+              onClick={addExtraUrls}
+              disabled={!urlInput.trim()}
+              title="Thêm ảnh (Ctrl+Enter)"
+              className="flex-shrink-0 self-start rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-[12px] font-medium text-fg transition hover:bg-panel disabled:opacity-40"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
         </div>
 
         {/* Tags → mapped to search_term on the job */}

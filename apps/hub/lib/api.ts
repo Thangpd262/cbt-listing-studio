@@ -166,6 +166,7 @@ export type CrawlListing = {
   shop_name: string | null
   images: string[]
   ai_images: string[]
+  extra_images: string[]
   price: number | null
   tags: string[]
   crawl_purpose: 'normal' | 'tm'
@@ -224,7 +225,7 @@ export const crawlApi = {
   },
 
   // Patch editable fields — title and/or the persisted AI image list.
-  async updateListing(apiKey: string, id: string, body: { title?: string; ai_images?: string[]; images?: string[]; status?: string }) {
+  async updateListing(apiKey: string, id: string, body: { title?: string; ai_images?: string[]; images?: string[]; extra_images?: string[]; status?: string }) {
     const res = await fetch(`${CRAWL_URL}/api/listings/${id}`, {
       method: 'PUT',
       headers: apiKeyHeaders(apiKey),

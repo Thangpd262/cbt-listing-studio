@@ -50,6 +50,8 @@ export type SampleListing = {
   images: string[]
   // AI-generated images persisted on the listing (empty until any are generated).
   aiImages: string[]
+  // Manually-added images (user-pasted URLs).
+  extraImages: string[]
   // Left-column metadata (optional — absent for real rows that lack it).
   username?: string
   email?: string
@@ -74,6 +76,7 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     hasJob: false,
     images: [img('case1'), img('case2'), img('case3'), img('case4'), img('case5'), img('case6')],
     aiImages: [],
+    extraImages: [],
     username: 'vnam0142004',
     email: 'nam@iart.group',
     etsyId: '1792611842',
@@ -89,6 +92,7 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     hasJob: true,
     images: [img('wild1'), img('wild2'), img('wild3')],
     aiImages: [img('ai-wild1')],
+    extraImages: [],
     username: 'vnam0142004',
     etsyId: '1805168638',
     sourceUrl: 'https://www.etsy.com/listing/1805168638/boho-wildflower-phone-case',
@@ -103,6 +107,7 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     hasJob: false,
     images: [],
     aiImages: [],
+    extraImages: [],
     username: 'vthang0091',
     email: 'thang@iart.group',
     etsyId: '1843647245',
