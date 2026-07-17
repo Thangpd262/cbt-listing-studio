@@ -59,10 +59,20 @@ export async function executeJob(supabase: Supabase, jobId: string) {
       }
       result = await client.putListing(sellerId, product.sku, listingBody)
       // SP-API returns HTTP 200 even for INVALID submissions -- surface as failure.
-      const spResult = result as { status?: string; issues?: { code: string; message: string }[] }
-      if (spResult.status === 'INVALID' || spResult.issues?.length) {
-        const msgs = spResult.issues?.map((i) => i.code + ': ' + i.message).join(' | ') ?? 'Submission rejected by Amazon'
+      // severity='WARNING' (e.g. 90000900 inapplicable attribute) means Amazon still
+      // processed the listing — only treat ERROR-level issues as a hard failure.
+      const spResult = result as { status?: string; issues?: { code: string; message: string; severity?: string }[] }
+      const hardErrors = spResult.issues?.filter((i) => i.severity === 'ERROR' || i.severity == null && spResult.status === 'INVALID') ?? []
+      if (spResult.status === 'INVALID' || hardErrors.length) {
+        const msgs = hardErrors.length
+          ? hardErrors.map((i) => i.code + ': ' + i.message).join(' | ')
+          : 'Submission rejected by Amazon'
         throw new Error(msgs)
+      }
+      // Attach warnings to result so they're visible in job.result but don't block success.
+      const warnings = spResult.issues?.filter((i) => i.severity !== 'ERROR') ?? []
+      if (warnings.length) {
+        result = { ...(result as object), warnings: warnings.map((i) => i.code + ': ' + i.message) }
       }
     } else if (job.action === 'delete') {
       result = await client.deleteListing(sellerId, product.sku)
