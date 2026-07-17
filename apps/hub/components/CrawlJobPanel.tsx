@@ -81,7 +81,7 @@ export default function CrawlJobPanel({
   const price = String(listing.price)
   // title autosave status + tags → search_term
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [tags, setTags] = useState('')
+  const [tags, setTags] = useState(() => (listing.tags ?? []).join('\n'))
   const [config, setConfig] = useState('')
   const [aiDescription, setAiDescription] = useState(false)
   const [promptId, setPromptId] = useState('')

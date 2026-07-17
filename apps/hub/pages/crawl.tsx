@@ -122,6 +122,7 @@ export default function CrawlPage() {
           sourceUrl: l.source_url ?? undefined,
           createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
           mood: l.mood ?? undefined,
+          tags: l.tags ?? [],
         }))
       )
     } catch (e) {
