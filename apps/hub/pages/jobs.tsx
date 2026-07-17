@@ -22,6 +22,7 @@ type Row = {
   errorFull: string | null
   submissionId: string | null
   payload: unknown
+  result: unknown
 }
 
 // Shape of the SP-API response we persist in amz_listing_jobs.result.
@@ -41,6 +42,7 @@ const SAMPLE_ROWS: Row[] = SAMPLE_JOBS.map((j) => ({
   errorFull: null,
   submissionId: null,
   payload: {},
+  result: null,
 }))
 
 // Sample data only when list-amz isn't wired (local dev). Otherwise: real data
@@ -73,6 +75,7 @@ function toRow(j: AmzJob): Row {
     errorFull: jobErrorText(j),
     submissionId: result?.submissionId ?? null,
     payload: j.payload ?? {},
+    result: j.result ?? null,
   }
 }
 
@@ -165,6 +168,7 @@ export default function JobsPage() {
     attempts: detail.attempts,
     errorText: detail.errorFull,
     payload: detail.payload,
+    result: detail.result,
   }
 
   return (

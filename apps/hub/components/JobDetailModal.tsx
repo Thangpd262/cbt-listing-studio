@@ -34,6 +34,7 @@ export type JobDetail = {
   attempts: number
   errorText: string | null
   payload: unknown
+  result: unknown // raw SP-API response stored on the job row
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -44,6 +45,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   )
 }
+
+type SpIssue = { code?: string; message?: string; severity?: string }
 
 export default function JobDetailModal({
   job,
@@ -72,6 +75,16 @@ export default function JobDetailModal({
       return String(job.payload)
     }
   })()
+  const resultText = (() => {
+    try {
+      return JSON.stringify(job.result ?? {}, null, 2)
+    } catch {
+      return String(job.result)
+    }
+  })()
+
+  const spResult = job.result as { issues?: SpIssue[]; warnings?: string[]; submissionId?: string } | null
+  const warnings = spResult?.warnings ?? spResult?.issues?.filter(i => i.severity?.toUpperCase() === 'WARNING').map(i => `${i.code ? i.code + ': ' : ''}${i.message ?? ''}`) ?? []
 
   return (
     <div
@@ -117,14 +130,32 @@ export default function JobDetailModal({
               '—'
             )}
           </Field>
+          {warnings.length > 0 && (
+            <Field label="Warnings">
+              <ul className="space-y-0.5">
+                {warnings.map((w, i) => (
+                  <li key={i} className="text-[12px] text-amber-600">{w}</li>
+                ))}
+              </ul>
+            </Field>
+          )}
         </div>
 
         <div className="mt-4">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">Payload</div>
-          <pre className="max-h-80 overflow-auto whitespace-pre break-all rounded-lg border border-line bg-panel2 p-3 font-mono text-[11.5px] leading-relaxed text-fg">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">Payload (gửi lên)</div>
+          <pre className="max-h-48 overflow-auto whitespace-pre break-all rounded-lg border border-line bg-panel2 p-3 font-mono text-[11.5px] leading-relaxed text-fg">
             {payloadText}
           </pre>
         </div>
+
+        {job.result && (
+          <div className="mt-3">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">Response từ Amazon</div>
+            <pre className="max-h-48 overflow-auto whitespace-pre break-all rounded-lg border border-line bg-panel2 p-3 font-mono text-[11.5px] leading-relaxed text-fg">
+              {resultText}
+            </pre>
+          </div>
+        )}
 
         {isError && onRetry && (
           <div className="mt-4 flex justify-end">
