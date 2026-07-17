@@ -28,6 +28,12 @@ function etsyListingId(url: string | null | undefined): string | undefined {
   return /\/listing\/(\d+)/.exec(url)?.[1]
 }
 
+// AliExpress product id from its source URL, e.g. …/item/3256811718256961… → "3256811718256961".
+function aliexpressListingId(url: string | null | undefined): string | undefined {
+  if (!url) return undefined
+  return /\/item\/(\d+)/.exec(url)?.[1]
+}
+
 // Sample listings only when the crawl service isn't wired (local dev).
 const USE_SAMPLE = !serviceConfigured.crawl
 
@@ -120,7 +126,9 @@ export default function CrawlPage() {
           images: l.images ?? [],
           aiImages: l.ai_images ?? [],
           email: l.created_by_email ?? undefined,
-          etsyId: etsyListingId(l.source_url),
+          etsyId: l.platform === 'aliexpress'
+            ? aliexpressListingId(l.source_url)
+            : etsyListingId(l.source_url),
           sourceUrl: l.source_url ?? undefined,
           createdAt: l.created_at ? l.created_at.slice(0, 10) : undefined,
           mood: l.mood ?? undefined,

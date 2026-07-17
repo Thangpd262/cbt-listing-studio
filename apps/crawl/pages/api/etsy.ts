@@ -54,6 +54,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ? 'aliexpress'
     : 'etsy'
 
+  // Normalise source URL: if extension didn't send one, build it from the platform ID
+  const sourceUrl: string | null =
+    url ??
+    (aliexpress_product_id
+      ? `https://www.aliexpress.com/item/${aliexpress_product_id}.html`
+      : etsy_listing_id
+      ? `https://www.etsy.com/listing/${etsy_listing_id}`
+      : null)
+
   if (!Array.isArray(images) || images.length === 0) {
     return error(res, 400, 'images phải có tối thiểu 1 URL')
   }
@@ -96,7 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .insert({
       account_id: auth.account_id,
       platform,
-      source_url: url ?? null,
+      source_url: sourceUrl,
       title: title ?? null,
       description: description ?? null,
       shop_name: shop_name ?? null,
