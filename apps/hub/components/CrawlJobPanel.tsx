@@ -275,7 +275,7 @@ export default function CrawlJobPanel({
         })
         if (r.status === 'failed') alert(`Job đã tạo nhưng chạy lỗi: ${r.error ?? 'unknown'}`)
         // Persist job_created status so reload keeps the badge green
-        try { await crawlApi.updateListing(apiKey, listing.id, { status: 'job_created' }) } catch { /* best-effort */ }
+        if (apiKey) try { await crawlApi.updateListing(apiKey, listing.id, { status: 'job_created' }) } catch { /* best-effort */ }
         onCreated()
       } catch (e) {
         alert(e instanceof Error ? e.message : 'Tạo job thất bại')
