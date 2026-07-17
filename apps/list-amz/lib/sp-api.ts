@@ -26,6 +26,7 @@ export type SearchListingsItem = {
   }>
   offers?: Array<{ price?: { amount?: number } }>
   fulfillmentAvailability?: Array<{ quantity?: number }>
+  attributes?: Record<string, unknown>
 }
 export type SearchListingsResponse = {
   numberOfResults?: number
@@ -53,7 +54,7 @@ export class SpApiClient {
   searchListings(sellerId: string, pageToken?: string) {
     const params = new URLSearchParams({
       marketplaceIds: this.marketplaceId,
-      includedData: 'summaries,offers,fulfillmentAvailability',
+      includedData: 'summaries,offers,fulfillmentAvailability,attributes',
       pageSize: '20',
     })
     if (pageToken) params.set('pageToken', pageToken)

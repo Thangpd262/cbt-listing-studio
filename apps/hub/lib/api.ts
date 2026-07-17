@@ -562,6 +562,23 @@ export const listAmzApi = {
     })
     return unwrap<{ product_id: string; job_id?: string; status: string; error?: string }>(res)
   },
+  // Bulk-update bullet points / description across SKUs → one 'update' job each.
+  // An omitted field is preserved (not cleared). SKUs resolve to amz_products by
+  // SKU, hydrating from the synced cache when no product row exists yet.
+  async bulkEditContent(
+    apiKey: string,
+    items: { sku: string; bullet_points?: string[]; description?: string }[]
+  ) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/bulk/content`, {
+      method: 'POST',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify({ items }),
+    })
+    return unwrap<{
+      count: number
+      results: { sku: string; job_id?: string; status: string; error?: string }[]
+    }>(res)
+  },
 }
 
 export const listWmtApi = {

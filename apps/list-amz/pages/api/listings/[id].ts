@@ -1,25 +1,22 @@
 import { withAuth, createSupabaseClient, ok, error } from '@cbt/shared'
 import { executeJob } from '../../../lib/jobs'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { resolveOrCreateProduct } from '../../../lib/product-resolve'
 
 // GET    — product detail + its recent jobs
 // PUT    — update product content, push an 'update' job to SP-API
 // PATCH  — update price/quantity, push a lighter 'price_qty' job
 // DELETE — push a 'delete' job to SP-API (marks product deleted)
 //
-// The [id] param resolves to an amz_products row by internal id (UUID) or by SKU
-// — the Hub's listing table is a synced cache whose rows carry a SKU, not our id.
+// The [id] param resolves to an amz_products row by internal id (UUID) or by SKU.
+// Listings synced from Amazon live only in amz_listings_cache; for those we
+// hydrate an amz_products row on first edit (see resolveOrCreateProduct).
 export default withAuth(async (req, res, auth) => {
   const supabase = createSupabaseClient()
   const idParam = req.query.id as string
 
-  const lookup = supabase.from('amz_products').select('*').eq('account_id', auth.account_id)
-  const { data: product, error: fetchError } = await (
-    UUID_RE.test(idParam) ? lookup.eq('id', idParam) : lookup.eq('sku', idParam)
-  ).single()
-  if (fetchError || !product) {
-    return error(res, 404, `Listing chưa liên kết product (${idParam}) — chưa hỗ trợ sửa listing này.`)
+  const { product, error: resolveErr } = await resolveOrCreateProduct(supabase, auth.account_id, idParam)
+  if (resolveErr || !product) {
+    return error(res, resolveErr?.status ?? 404, resolveErr?.message ?? `Không tìm thấy listing (${idParam})`)
   }
   const productId = product.id as string
 
@@ -92,7 +89,7 @@ export default withAuth(async (req, res, auth) => {
       .from('amz_listing_jobs')
       .insert({
         account_id: auth.account_id,
-        selling_account_id: product.selling_account_id,
+        selling_account_id: product.selling_account_id as string,
         product_id: productId,
         action: 'price_qty',
         payload: { price, quantity },
@@ -112,7 +109,7 @@ export default withAuth(async (req, res, auth) => {
       .from('amz_listing_jobs')
       .insert({
         account_id: auth.account_id,
-        selling_account_id: product.selling_account_id,
+        selling_account_id: product.selling_account_id as string,
         product_id: productId,
         action: 'delete',
         payload: {},

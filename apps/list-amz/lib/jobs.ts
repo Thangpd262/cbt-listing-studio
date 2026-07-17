@@ -29,7 +29,7 @@ export async function executeJob(supabase: Supabase, jobId: string) {
   try {
     const { data: product } = await supabase
       .from('amz_products')
-      .select('id, sku')
+      .select('id, sku, listing_id')
       .eq('id', job.product_id)
       .single()
     if (!product) throw new Error('Product not found')
@@ -53,7 +53,22 @@ export async function executeJob(supabase: Supabase, jobId: string) {
           .eq('key', job.payload.config_key)
           .single()
         if (!config) throw new Error(`product_config not found: ${job.payload.config_key}`)
-        listingBody = buildListingBodyFromConfig(config as ProductConfig, job.payload.field_values as Record<string, string>, marketplaceId)
+        // Prepend the source listing's crawl images ahead of the config's default
+        // set (config-builder merges them into the `images` field's other-image slots).
+        let crawlImages = ''
+        if (product.listing_id) {
+          const { data: crawl } = await supabase
+            .from('crawl_listings')
+            .select('images')
+            .eq('id', product.listing_id)
+            .maybeSingle()
+          if (Array.isArray(crawl?.images)) crawlImages = (crawl!.images as string[]).join('\n')
+        }
+        const fieldValues = {
+          ...(job.payload.field_values as Record<string, string>),
+          __crawl_images__: crawlImages,
+        }
+        listingBody = buildListingBodyFromConfig(config as ProductConfig, fieldValues, marketplaceId)
       } else {
         listingBody = buildListingBody(job.payload as ListingPayload, marketplaceId)
       }

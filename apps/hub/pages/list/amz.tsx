@@ -157,6 +157,12 @@ export default function ListAmzPage() {
   const [newAttrValue, setNewAttrValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; sku: string } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState(false)
+  // Bulk content edit (bullet points + description) across the selected rows.
+  const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [bulkBullets, setBulkBullets] = useState('')
+  const [bulkDescription, setBulkDescription] = useState('')
+  const [bulkEditLoading, setBulkEditLoading] = useState(false)
+  const [bulkEditError, setBulkEditError] = useState<string | null>(null)
 
   // Content attribute keys managed by the dedicated tabs (excluded from Tab 4).
   const CONTENT_ATTR_KEYS = new Set([
@@ -507,6 +513,48 @@ export default function ListAmzPage() {
     }
   }
 
+  // Apply bullet points / description to every selected listing. Empty fields are
+  // omitted so they keep their current value server-side.
+  async function confirmBulkEditContent() {
+    if (useSample || !apiKey) {
+      setBulkEditError('Cần API key để lưu — đăng nhập và đồng bộ trước.')
+      return
+    }
+    const skus = rows.filter((r) => selected.has(r.id)).map((r) => r.sku).filter(Boolean) as string[]
+    if (skus.length === 0) {
+      setBulkEditError('Các listing đã chọn chưa có SKU — không thể cập nhật.')
+      return
+    }
+    const bullets = bulkBullets.split('\n').map((s) => s.trim()).filter(Boolean)
+    const description = bulkDescription.trim()
+    if (bullets.length === 0 && !description) {
+      setBulkEditError('Nhập bullet points hoặc mô tả để áp dụng.')
+      return
+    }
+    setBulkEditLoading(true)
+    setBulkEditError(null)
+    try {
+      const items = skus.map((sku) => ({
+        sku,
+        ...(bullets.length ? { bullet_points: bullets } : {}),
+        ...(description ? { description } : {}),
+      }))
+      const r = await listAmzApi.bulkEditContent(apiKey, items)
+      const failed = r.results.filter((x) => x.status === 'failed').length
+      setBulkEditOpen(false)
+      setBulkBullets('')
+      setBulkDescription('')
+      setSelected(new Set())
+      await load()
+      const note = failed ? ` · ${failed} lỗi` : ''
+      setSyncMsg(`Đã cập nhật nội dung ${r.results.length - failed}/${r.results.length} listing${note}`)
+    } catch (e) {
+      setBulkEditError(e instanceof Error ? e.message : 'Cập nhật hàng loạt thất bại')
+    } finally {
+      setBulkEditLoading(false)
+    }
+  }
+
   function toggleRow(id: string) {
     setSelected((s) => {
       const next = new Set(s)
@@ -599,9 +647,20 @@ export default function ListAmzPage() {
         </span>
         {syncMsg && <span className="text-ok">✓ {syncMsg}</span>}
         {selected.size > 0 && (
-          <button onClick={() => setBulkConfirm(true)} className="btn btn-danger !py-0.5 !text-[11px]">
-            <Trash2 size={12} /> Xoá đã chọn ({selected.size})
-          </button>
+          <>
+            <button
+              onClick={() => {
+                setBulkEditError(null)
+                setBulkEditOpen(true)
+              }}
+              className="btn !py-0.5 !text-[11px]"
+            >
+              <Pencil size={12} /> Sửa nội dung ({selected.size})
+            </button>
+            <button onClick={() => setBulkConfirm(true)} className="btn btn-danger !py-0.5 !text-[11px]">
+              <Trash2 size={12} /> Xoá đã chọn ({selected.size})
+            </button>
+          </>
         )}
       </div>
 
@@ -1064,6 +1123,46 @@ export default function ListAmzPage() {
               </button>
               <button onClick={confirmBulkDelete} className="btn btn-danger">
                 Xoá đã chọn
+              </button>
+            </div>
+          </div>
+        </Overlay>
+      )}
+
+      {/* Bulk content edit */}
+      {bulkEditOpen && (
+        <Overlay onClose={() => (bulkEditLoading ? null : setBulkEditOpen(false))}>
+          <div className="w-[480px] max-w-[95vw] rounded-lg border border-line bg-panel p-4">
+            <div className="mb-1 text-sm font-medium">Sửa nội dung {selected.size} listing</div>
+            <p className="mb-3 text-[11px] text-muted">Trường để trống sẽ giữ nguyên giá trị cũ.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[11px] text-muted">Gạch đầu dòng (bullet_point)</label>
+                <textarea
+                  rows={5}
+                  value={bulkBullets}
+                  onChange={(e) => setBulkBullets(e.target.value)}
+                  placeholder="Mỗi dòng 1 bullet point"
+                  className="field w-full resize-y text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-muted">Mô tả (product_description)</label>
+                <textarea
+                  rows={4}
+                  value={bulkDescription}
+                  onChange={(e) => setBulkDescription(e.target.value)}
+                  className="field w-full resize-y text-xs"
+                />
+              </div>
+            </div>
+            {bulkEditError && <div className="mt-2 text-[11px] text-danger">{bulkEditError}</div>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setBulkEditOpen(false)} disabled={bulkEditLoading} className="btn">
+                Huỷ
+              </button>
+              <button onClick={confirmBulkEditContent} disabled={bulkEditLoading} className="btn btn-acc">
+                {bulkEditLoading ? <Loader2 size={13} className="animate-spin" /> : null} Áp dụng
               </button>
             </div>
           </div>

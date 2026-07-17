@@ -51,7 +51,9 @@ export function buildAttributesFromConfig(
   const attrs: Record<string, unknown> = {}
 
   for (const field of fields) {
-    const rawValue = (values[field.k] ?? field.def ?? '').trim()
+    // User-entered value wins, but an empty string (field left blank) must fall
+    // back to the config default — `??` would keep the empty string.
+    const rawValue = (values[field.k]?.trim() || field.def || '').trim()
 
     // Image kinds (no attr name, handled as locator keys)
     if (field.kind === 'image') {
@@ -61,8 +63,16 @@ export function buildAttributesFromConfig(
       continue
     }
     if (field.kind === 'images') {
-      const urls = rawValue.split('\n').map((u) => u.trim()).filter(Boolean)
-      urls.slice(0, 8).forEach((url, i) => {
+      // Config images are the default set → placed last. Crawl images (carried
+      // from the source listing under the synthetic `__crawl_images__` key) lead.
+      // Only the 8 "other" slots are filled here — the main image is a separate
+      // `image` field, so the effective total is 1 main + 8 = 9.
+      const configUrls = rawValue.split('\n').map((u) => u.trim()).filter(Boolean)
+      const crawlUrls = (values['__crawl_images__'] ?? '').split('\n').map((u) => u.trim()).filter(Boolean)
+      const MAX_OTHER = 8
+      const crawlSlots = Math.max(0, MAX_OTHER - configUrls.length)
+      const merged = [...crawlUrls.slice(0, crawlSlots), ...configUrls].slice(0, MAX_OTHER)
+      merged.forEach((url, i) => {
         attrs[`other_product_image_locator_${i + 1}`] = [{ media_location: url, marketplace_id: marketplaceId }]
       })
       continue
@@ -123,7 +133,7 @@ export function buildOfferAttributes(
 ): Record<string, unknown> {
   const get = (kind: FieldKind) => {
     const field = fields.find((f) => f.kind === kind)
-    return (values[field?.k ?? ''] ?? field?.def ?? '').trim()
+    return (values[field?.k ?? '']?.trim() || field?.def || '').trim()
   }
 
   const price = parseFloat(get('price'))
@@ -168,7 +178,7 @@ export function buildVariationAttributes(
   if (!variationTheme) return {}
 
   const parentField = fields.find((f) => f.kind === 'parent')
-  const parentSku = (values[parentField?.k ?? 'parent'] ?? '').trim()
+  const parentSku = (values[parentField?.k ?? 'parent']?.trim() || parentField?.def || '').trim()
 
   const attrs: Record<string, unknown> = {
     variation_theme: [{ name: variationTheme, marketplace_id: marketplaceId }],
