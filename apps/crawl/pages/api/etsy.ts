@@ -65,7 +65,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!isNaN(n)) priceNum = n
   }
 
+  // Dedup: nếu đã crawl listing này rồi thì trả về record cũ, không insert mới
+  const externalId = platform === 'aliexpress'
+    ? String(aliexpress_product_id ?? '').trim()
+    : String(etsy_listing_id ?? '').trim()
+
   const supabase = createSupabaseClient()
+
+  if (externalId) {
+    const { data: existing } = await supabase
+      .from('crawl_listings')
+      .select('id')
+      .eq('account_id', auth.account_id)
+      .eq('platform', platform)
+      .ilike('source_url', `%${externalId}%`)
+      .maybeSingle()
+
+    if (existing) {
+      return created(res, {
+        listing_id: existing.id,
+        platform,
+        status: 'duplicate',
+        image_count: 0,
+      })
+    }
+  }
+
   const { data, error: dbError } = await supabase
     .from('crawl_listings')
     .insert({
