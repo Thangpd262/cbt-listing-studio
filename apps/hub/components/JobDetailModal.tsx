@@ -68,9 +68,12 @@ export default function JobDetailModal({
   }, [onClose])
 
   const isError = job.status === 'failed' || job.status === 'error'
+  const rawPayload = job.payload as Record<string, unknown> | null
+  const resolvedBody = rawPayload?._resolved
   const payloadText = (() => {
     try {
-      return JSON.stringify(job.payload ?? {}, null, 2)
+      // Show the fully-resolved listing body if available, else the raw field_values
+      return JSON.stringify(resolvedBody ?? rawPayload ?? {}, null, 2)
     } catch {
       return String(job.payload)
     }
@@ -142,7 +145,9 @@ export default function JobDetailModal({
         </div>
 
         <div className="mt-4">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">Payload (gửi lên)</div>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+            Payload {resolvedBody ? '(đã resolve với config)' : '(raw field_values)'}
+          </div>
           <pre className="max-h-48 overflow-auto whitespace-pre break-all rounded-lg border border-line bg-panel2 p-3 font-mono text-[11.5px] leading-relaxed text-fg">
             {payloadText}
           </pre>

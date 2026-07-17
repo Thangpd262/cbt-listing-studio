@@ -69,6 +69,11 @@ export async function executeJob(supabase: Supabase, jobId: string) {
           __crawl_images__: crawlImages,
         }
         const listingBody = buildListingBodyFromConfig(config as ProductConfig, fieldValues, marketplaceId)
+        // Persist resolved body so job detail modal can show what was actually sent
+        await supabase
+          .from('amz_listing_jobs')
+          .update({ payload: { ...(job.payload as object), _resolved: listingBody } })
+          .eq('id', jobId)
         result = await client.putListing(sellerId, product.sku, listingBody)
       } else if (job.action === 'update') {
         // Edit-modal update: PATCH only the changed content fields so attributes
