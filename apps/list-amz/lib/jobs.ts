@@ -44,9 +44,9 @@ export async function executeJob(supabase: Supabase, jobId: string) {
 
     let result: unknown
     if (job.action === 'create' || job.action === 'update') {
-      // Config-based path: payload has config_key + field_values
-      let listingBody: object
+      const payload = job.payload as ListingPayload
       if (job.payload?.config_key && job.payload?.field_values) {
+        // Config-based path (create/update): build + PUT the full listing body.
         const { data: config } = await supabase
           .from('product_configs')
           .select('key, product_type, variation_theme, fields')
@@ -68,16 +68,61 @@ export async function executeJob(supabase: Supabase, jobId: string) {
           ...(job.payload.field_values as Record<string, string>),
           __crawl_images__: crawlImages,
         }
-        listingBody = buildListingBodyFromConfig(config as ProductConfig, fieldValues, marketplaceId)
-      } else {
-        // productType must be the SP-API-confirmed value (via getListingItem) —
-        // a null/wrong cache value produces an invalid PUT body.
-        if (!(job.payload as ListingPayload).product_type) {
+        const listingBody = buildListingBodyFromConfig(config as ProductConfig, fieldValues, marketplaceId)
+        result = await client.putListing(sellerId, product.sku, listingBody)
+      } else if (job.action === 'update') {
+        // Edit-modal update: PATCH only the changed content fields so attributes
+        // not touched here are preserved on the live listing. productType must be
+        // the SP-API-confirmed value (via getListingItem).
+        if (!payload.product_type) {
           throw new Error('product_type không xác định — không thể update listing này.')
         }
-        listingBody = buildListingBody(job.payload as ListingPayload, marketplaceId)
+        const lang = 'en_US'
+        const patches: object[] = []
+        if (payload.title) {
+          patches.push({
+            op: 'replace',
+            path: '/attributes/item_name',
+            value: [{ value: payload.title, language_tag: lang, marketplace_id: marketplaceId }],
+          })
+        }
+        if (payload.description) {
+          patches.push({
+            op: 'replace',
+            path: '/attributes/product_description',
+            value: [{ value: payload.description, language_tag: lang, marketplace_id: marketplaceId }],
+          })
+        }
+        if (payload.bullet_points?.length) {
+          patches.push({
+            op: 'replace',
+            path: '/attributes/bullet_point',
+            value: payload.bullet_points.map((bp) => ({ value: bp, language_tag: lang, marketplace_id: marketplaceId })),
+          })
+        }
+        if (payload.images?.[0]) {
+          patches.push({
+            op: 'replace',
+            path: '/attributes/main_product_image_locator',
+            value: [{ media_location: payload.images[0], marketplace_id: marketplaceId }],
+          })
+        }
+        ;(payload.images ?? []).slice(1).forEach((url, i) => {
+          patches.push({
+            op: 'replace',
+            path: `/attributes/other_product_image_locator_${i + 1}`,
+            value: [{ media_location: url, marketplace_id: marketplaceId }],
+          })
+        })
+        result = await client.patchListing(sellerId, product.sku, patches, payload.product_type)
+      } else {
+        // Non-config create → full PUT.
+        if (!payload.product_type) {
+          throw new Error('product_type không xác định — không thể update listing này.')
+        }
+        const listingBody = buildListingBody(payload, marketplaceId)
+        result = await client.putListing(sellerId, product.sku, listingBody)
       }
-      result = await client.putListing(sellerId, product.sku, listingBody)
       // SP-API returns HTTP 200 even for INVALID submissions -- surface as failure.
       // severity='WARNING' (e.g. 90000900 inapplicable attribute) means Amazon still
       // processed the listing — only treat ERROR-level issues as a hard failure.

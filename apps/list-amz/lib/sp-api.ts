@@ -53,8 +53,10 @@ export class SpApiClient {
     return this.request('DELETE', this.itemPath(sellerId, sku))
   }
 
-  patchListing(sellerId: string, sku: string, patches: object[]) {
-    return this.request('PATCH', this.itemPath(sellerId, sku), { productType: 'PRODUCT', patches })
+  // productType should match the live listing (from getListingItem); defaults to
+  // the generic 'PRODUCT' for partial updates that don't need the real type (e.g. price/qty).
+  patchListing(sellerId: string, sku: string, patches: object[], productType = 'PRODUCT') {
+    return this.request('PATCH', this.itemPath(sellerId, sku), { productType, patches })
   }
 
   // searchListingsItems — all listings for a seller in this marketplace, one
