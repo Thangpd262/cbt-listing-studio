@@ -562,6 +562,21 @@ export const listAmzApi = {
     })
     return unwrap<{ product_id: string; job_id?: string; status: string; error?: string }>(res)
   },
+  // Fetch a listing's live attributes (bullets/description/images) from SP-API on
+  // demand — kept out of the sync batch, which times out on large catalogues once
+  // attributes are included. `idOrSku` resolves the same way as the edit routes.
+  async getListingAttributes(apiKey: string, idOrSku: string) {
+    const res = await fetch(
+      `${LIST_AMZ_URL}/api/listings/${encodeURIComponent(idOrSku)}/attributes`,
+      { headers: apiKeyHeaders(apiKey) }
+    )
+    return unwrap<{
+      bullet_points: string[]
+      description: string | null
+      images: string[]
+      attributes: Record<string, unknown>
+    }>(res)
+  },
   // Bulk-update bullet points / description across SKUs → one 'update' job each.
   // An omitted field is preserved (not cleared). SKUs resolve to amz_products by
   // SKU, hydrating from the synced cache when no product row exists yet.

@@ -26,12 +26,20 @@ export type SearchListingsItem = {
   }>
   offers?: Array<{ price?: { amount?: number } }>
   fulfillmentAvailability?: Array<{ quantity?: number }>
-  attributes?: Record<string, unknown>
 }
 export type SearchListingsResponse = {
   numberOfResults?: number
   pagination?: { nextToken?: string }
   items?: SearchListingsItem[]
+}
+
+// getListingItem — a single item with its full attributes. Fetched on demand
+// (edit modal) rather than in the sync batch, which would time out on large
+// catalogues once attributes are included.
+export type GetListingItemResponse = {
+  sku?: string
+  summaries?: SearchListingsItem['summaries']
+  attributes?: Record<string, unknown>
 }
 
 export class SpApiClient {
@@ -54,11 +62,23 @@ export class SpApiClient {
   searchListings(sellerId: string, pageToken?: string) {
     const params = new URLSearchParams({
       marketplaceIds: this.marketplaceId,
-      includedData: 'summaries,offers,fulfillmentAvailability,attributes',
+      includedData: 'summaries,offers,fulfillmentAvailability',
       pageSize: '20',
     })
     if (pageToken) params.set('pageToken', pageToken)
     return this.request('GET', `/listings/2021-08-01/items/${sellerId}?${params}`) as Promise<SearchListingsResponse>
+  }
+
+  // Fetch one listing item with full attributes (for the edit modal).
+  getListingItem(sellerId: string, sku: string) {
+    const params = new URLSearchParams({
+      marketplaceIds: this.marketplaceId,
+      includedData: 'attributes,summaries',
+    })
+    return this.request(
+      'GET',
+      `/listings/2021-08-01/items/${sellerId}/${encodeURIComponent(sku)}?${params}`
+    ) as Promise<GetListingItemResponse>
   }
 
   private itemPath(sellerId: string, sku: string) {

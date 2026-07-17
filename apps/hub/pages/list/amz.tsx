@@ -139,6 +139,8 @@ export default function ListAmzPage() {
   const [editTab, setEditTab] = useState<'content' | 'price' | 'images' | 'attrs'>('content')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Live attributes are fetched on modal open (not carried in the sync batch).
+  const [editAttrsLoading, setEditAttrsLoading] = useState(false)
   // Tab 1 — Nội dung
   const [editItemName, setEditItemName] = useState('')
   const [editBullets, setEditBullets] = useState<string[]>(['', '', '', '', ''])
@@ -318,6 +320,27 @@ export default function ListAmzPage() {
     setAttrErrors({})
     setNewAttrKey('')
     setNewAttrValue('')
+
+    // The cache omits attributes, so bullets/description/images above come from a
+    // (usually empty) cache copy. Pull the live values from SP-API on open; on any
+    // failure keep whatever the cache gave us.
+    if (!useSample && apiKey && (row.sku || row.id)) {
+      setEditAttrsLoading(true)
+      listAmzApi
+        .getListingAttributes(apiKey, row.sku ?? row.id)
+        .then((d) => {
+          if (d.bullet_points?.length) {
+            const bp = d.bullet_points
+            setEditBullets([bp[0] ?? '', bp[1] ?? '', bp[2] ?? '', bp[3] ?? '', bp[4] ?? ''])
+          }
+          if (d.description) setEditDescription(d.description)
+          if (d.images?.length) setEditImages(d.images)
+        })
+        .catch(() => {})
+        .finally(() => setEditAttrsLoading(false))
+    } else {
+      setEditAttrsLoading(false)
+    }
   }
 
   const editMarketplace = () => editTarget?.marketplace_id ?? 'ATVPDKIKX0DER'
@@ -938,6 +961,11 @@ export default function ListAmzPage() {
             <div className="flex-1 overflow-y-auto p-4">
               {editTab === 'content' && (
                 <div className="space-y-3">
+                  {editAttrsLoading && (
+                    <div className="flex items-center gap-2 text-[11px] text-muted">
+                      <Loader2 size={12} className="animate-spin" /> Đang tải nội dung mới nhất từ Amazon…
+                    </div>
+                  )}
                   <div>
                     <label className="mb-1 block text-[11px] text-muted">
                       Tên sản phẩm (item_name){' '}
