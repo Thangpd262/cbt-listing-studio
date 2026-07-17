@@ -188,7 +188,8 @@ export type PaginatedResponse<T> = {
 export const crawlApi = {
   async getListings(
     apiKey: string,
-    params: { page?: number; limit?: number; platform?: string; status?: string; user_id?: string } = {}
+    params: { page?: number; limit?: number; platform?: string; status?: string; user_id?: string } = {},
+    currentUserId?: string | null
   ): Promise<PaginatedResponse<CrawlListing>> {
     const q = new URLSearchParams()
     if (params.page) q.set('page', String(params.page))
@@ -196,7 +197,9 @@ export const crawlApi = {
     if (params.platform) q.set('platform', params.platform)
     if (params.status) q.set('status', params.status)
     if (params.user_id) q.set('user_id', params.user_id)
-    const res = await fetch(`${CRAWL_URL}/api/listings?${q}`, { headers: apiKeyHeaders(apiKey) })
+    const headers: Record<string, string> = apiKeyHeaders(apiKey)
+    if (currentUserId) headers['X-User-ID'] = currentUserId
+    const res = await fetch(`${CRAWL_URL}/api/listings?${q}`, { headers })
     const body = await res.json() as { success: boolean; data: CrawlListing[]; meta?: { total: number; page: number; limit: number; pages: number }; error?: string }
     if (!res.ok || !body.success) throw new Error(body.error ?? `Request failed (${res.status})`)
     return {

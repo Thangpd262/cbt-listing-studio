@@ -45,11 +45,15 @@ export function withAuth(
     }
 
     try {
+      // Forward X-User-ID when present so validate can return the correct
+      // user's role instead of always defaulting to the account owner.
+      const userId = req.headers['x-user-id'] as string | undefined
       const response = await fetch(`${accountServiceUrl}/api/auth/validate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': apiKey,
+          ...(userId ? { 'X-User-ID': userId } : {}),
         },
       })
 

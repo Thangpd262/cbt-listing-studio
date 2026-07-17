@@ -114,8 +114,9 @@ export default function CrawlPage() {
       const res = await crawlApi.getListings(apiKey, {
         limit: 48,
         platform: crawlPlatform,
+        // Admin with a specific user filter set → filter to that user's listings.
         user_id: isAdmin && userFilter ? userFilter : undefined,
-      })
+      }, user?.user_id)
       setListings(
         res.data.map((l) => ({
           id: l.id,

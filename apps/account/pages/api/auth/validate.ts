@@ -39,16 +39,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .eq('id', key.account_id)
     .single()
 
-  // The earliest active user (the seed admin in single-tenant) is the identity
-  // behind an account-scoped API key.
-  const { data: user } = await supabase
-    .from('app_users')
-    .select('id, role')
-    .eq('account_id', key.account_id)
-    .eq('status', 'active')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+  // Resolve user identity: if the caller forwarded X-User-ID, look up that
+  // specific user (must belong to this account). Falls back to the account
+  // owner (earliest active user) for backward compatibility.
+  const requestedUserId = req.headers['x-user-id'] as string | undefined
+  let user: { id: string; role: string | null } | null = null
+
+  if (requestedUserId) {
+    const { data } = await supabase
+      .from('app_users')
+      .select('id, role')
+      .eq('id', requestedUserId)
+      .eq('account_id', key.account_id)
+      .eq('status', 'active')
+      .maybeSingle()
+    user = data ?? null
+  }
+
+  if (!user) {
+    // Fall back to account owner (first active user by created_at).
+    const { data } = await supabase
+      .from('app_users')
+      .select('id, role')
+      .eq('account_id', key.account_id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    user = data ?? null
+  }
 
   // Per-selling-account permissions for the account.
   const { data: perms } = await supabase
