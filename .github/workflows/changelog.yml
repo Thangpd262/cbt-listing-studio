@@ -1,0 +1,95 @@
+name: Auto Changelog
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50 # enough to cover the commits in this push
+
+      - name: Collect commits in this push
+        id: commits
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # First push / no known base — fall back to the last 10 commits.
+            COMMITS=$(git log --no-merges --pretty=format:"- %s (%an)" -n 10)
+          else
+            COMMITS=$(git log --no-merges --pretty=format:"- %s (%an)" "$BEFORE..HEAD")
+          fi
+          {
+            echo "commits<<EOF"
+            echo "$COMMITS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog via Claude API
+        id: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMITS: ${{ steps.commits.outputs.commits }}
+        run: |
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to summarize; skipping."
+            exit 0
+          fi
+          # Build the request body with python (json.dumps) so commit text can't
+          # break out of the JSON / shell quoting.
+          REQ=$(python3 -c '
+          import os, json
+          prompt = (
+              "Tóm tắt những thay đổi sau thành mục \"Có gì mới\" ngắn gọn, dễ đọc "
+              "bằng tiếng Việt cho người dùng cuối (không phải dev). Nhóm các thay đổi "
+              "liên quan lại. Dùng markdown bullet points. Bỏ qua các commit chore/fix "
+              "typo nhỏ.\n\nCommits:\n" + os.environ["COMMITS"]
+          )
+          print(json.dumps({
+              "model": "claude-haiku-4-5-20251001",
+              "max_tokens": 500,
+              "messages": [{"role": "user", "content": prompt}],
+          }))
+          ')
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$REQ")
+          SUMMARY=$(echo "$RESPONSE" | python3 -c '
+          import sys, json
+          d = json.load(sys.stdin)
+          print(d["content"][0]["text"] if "content" in d else "")
+          ')
+          {
+            echo "summary<<EOF"
+            echo "$SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Save to Supabase
+        if: steps.claude.outputs.summary != ''
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUMMARY: ${{ steps.claude.outputs.summary }}
+          COMMITS: ${{ steps.commits.outputs.commits }}
+        run: |
+          VERSION="$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)"
+          BODY=$(VERSION="$VERSION" python3 -c '
+          import os, json
+          print(json.dumps({
+              "version": os.environ["VERSION"],
+              "summary": os.environ["SUMMARY"],
+              "raw_commits": os.environ.get("COMMITS", ""),
+          }))
+          ')
+          curl -sf "$SUPABASE_URL/rest/v1/changelogs" \
+            -H "apikey: $SUPABASE_SERVICE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "$BODY"

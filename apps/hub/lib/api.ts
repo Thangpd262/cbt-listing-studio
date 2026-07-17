@@ -611,6 +611,16 @@ export const listAmzApi = {
   },
 }
 
+export type Changelog = { id: string; version: string; summary: string; published_at: string }
+
+// "Có gì mới" changelog (hub-local API route, same origin).
+export const changelogApi = {
+  async list(apiKey: string, limit = 5) {
+    const res = await fetch(`/api/changelog?limit=${limit}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<{ changelogs: Changelog[] }>(res)
+  },
+}
+
 export const listWmtApi = {
   async getProducts(apiKey: string) {
     const res = await fetch(`${LIST_WMT_URL}/api/products`, { headers: apiKeyHeaders(apiKey) })
