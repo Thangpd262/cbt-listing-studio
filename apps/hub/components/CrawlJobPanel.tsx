@@ -72,7 +72,7 @@ export default function CrawlJobPanel({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set([...listing.images.map((_, i) => `etsy-${i}`), ...listing.aiImages.map((_, i) => `ai-${i}`)])
   )
-  const [mainId, setMainId] = useState<string | null>(listing.images.length ? 'etsy-0' : null)
+  const [mainId, setMainId] = useState<string | null>(null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
   // Fullscreen preview (Etsy or AI image).
@@ -229,6 +229,15 @@ export default function CrawlJobPanel({
   async function submit() {
     if (title.length > 75) {
       alert('Title vuot qua 75 ky tu -- Amazon se tu choi. Rut ngan truoc khi tao job.')
+      return
+    }
+    if (!mainId || !selected.has(mainId)) {
+      alert('Chưa chọn ảnh chính. Nhấn ★ trên ảnh muốn dùng làm main image.')
+      return
+    }
+    const hasTags = tags.split(/[,\n]/).some((t) => t.trim())
+    if (!hasTags) {
+      alert('Chưa có Tags / Search term. Điền ít nhất 1 tag trước khi tạo job.')
       return
     }
     const configKey = resolveConfigKey(config)
