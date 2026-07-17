@@ -148,7 +148,7 @@ export default function JobDetailModal({
           </pre>
         </div>
 
-        {job.result && (
+        {!!job.result && (
           <div className="mt-3">
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">Response từ Amazon</div>
             <pre className="max-h-48 overflow-auto whitespace-pre break-all rounded-lg border border-line bg-panel2 p-3 font-mono text-[11.5px] leading-relaxed text-fg">
