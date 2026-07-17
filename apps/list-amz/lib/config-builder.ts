@@ -5,6 +5,7 @@
 // Must be stripped from any listing body before PUT/PATCH.
 export const INAPPLICABLE_ATTRS = new Set([
   'dangerous_goods_regulations',
+  'supplier_declared_dg_hz_regulation', // "Dangerous Goods Regulations" in Amazon UI — inapplicable for apparel/mugs/candles
   'size_map',
   'included_components',
   'batteries_required',
