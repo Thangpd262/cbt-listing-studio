@@ -21,7 +21,9 @@ async function getMarketplaceId(supabase: Supabase, sellingAccountId: string): P
 // Flatten one SP-API listing item into an amz_listings_cache row.
 function toCacheRow(accountId: string, marketplaceId: string, item: SearchListingsItem) {
   const s = item.summaries?.[0] ?? {}
-  const status = Array.isArray(s.status) ? s.status.join(',') : s.status ?? null
+  // Sort so the joined key is order-independent (e.g. always BUYABLE,DISCOVERABLE)
+  // — the hub filters/styles by exact string match.
+  const status = Array.isArray(s.status) ? [...s.status].sort().join(',') : s.status ?? null
   return {
     account_id: accountId,
     marketplace_id: marketplaceId,

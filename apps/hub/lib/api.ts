@@ -466,6 +466,7 @@ export const listAmzApi = {
       search?: string
       type?: string
       niche?: string
+      status?: string
       sort?: 'newest' | 'oldest' | 'updated'
     } = {}
   ) {
@@ -475,6 +476,7 @@ export const listAmzApi = {
     if (params.search) q.set('search', params.search)
     if (params.type) q.set('type', params.type)
     if (params.niche) q.set('niche', params.niche)
+    if (params.status) q.set('status', params.status)
     if (params.sort) q.set('sort', params.sort)
     const res = await fetch(`/api/amz-listings?${q}`, { headers: apiKeyHeaders(apiKey) })
     return unwrap<CachedListingsPage<AmzCachedListing>>(res)
@@ -577,6 +579,17 @@ export const listAmzApi = {
       images: string[]
       attributes: Record<string, unknown>
       product_type: string | null
+    }>(res)
+  },
+  // Fetch a listing's live SP-API issues (why it's inactive/hidden). Lazy — only
+  // called when the user asks to see the reason for a non-live status.
+  async getListingIssues(apiKey: string, idOrSku: string) {
+    const res = await fetch(
+      `${LIST_AMZ_URL}/api/listings/${encodeURIComponent(idOrSku)}/issues`,
+      { headers: apiKeyHeaders(apiKey) }
+    )
+    return unwrap<{
+      issues: { code: string; message: string; severity: string; attributeNames?: string[] }[]
     }>(res)
   },
   // Bulk-update bullet points / description across SKUs → one 'update' job each.

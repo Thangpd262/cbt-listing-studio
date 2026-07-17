@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Info,
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { SkeletonRows } from '../../components/Skeleton'
@@ -71,7 +72,9 @@ const STATUS_MAP: Record<string, { label: string; badge: string; dot: string }> 
 }
 function statusStyle(raw: string | null) {
   if (!raw) return { label: '—', badge: 'b-mu', dot: 'bg-muted' }
-  return STATUS_MAP[raw] ?? { label: raw, badge: 'b-mu', dot: 'bg-muted' }
+  // Normalize order (sync sorts too, but old cache rows may be unsorted).
+  const key = raw.split(',').sort().join(',')
+  return STATUS_MAP[key] ?? { label: raw, badge: 'b-mu', dot: 'bg-muted' }
 }
 
 // "lúc 14:05 · 14/07/2026" from an ISO timestamp (sync freshness line).
@@ -126,6 +129,7 @@ export default function ListAmzPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterNiche, setFilterNiche] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
   // Sort is independent of the filters — changing a filter must not reset it.
   const [sort, setSort] = useState<'newest' | 'oldest' | 'updated'>('newest')
   const [page, setPage] = useState(1)
@@ -135,6 +139,11 @@ export default function ListAmzPage() {
   const [groups, setGroups] = useState<string[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  // Status-reason popover: lazily-fetched issues per SKU, cached across opens.
+  type ListingIssue = { code: string; message: string; severity: string; attributeNames?: string[] }
+  const [issuesMap, setIssuesMap] = useState<Record<string, ListingIssue[]>>({})
+  const [issuesOpenSku, setIssuesOpenSku] = useState<string | null>(null)
+  const [issuesLoadingSku, setIssuesLoadingSku] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<AmzCachedListing | null>(null)
   const [editTab, setEditTab] = useState<'content' | 'price' | 'images' | 'attrs'>('content')
   const [saving, setSaving] = useState(false)
@@ -198,6 +207,7 @@ export default function ListAmzPage() {
         search,
         type: filterType,
         niche: filterNiche,
+        status: filterStatus,
         sort,
       })
       setRows(r.listings)
@@ -211,7 +221,7 @@ export default function ListAmzPage() {
       setLoaded(true)
       setLoading(false)
     }
-  }, [apiKey, useSample, page, limit, search, filterType, filterNiche, sort])
+  }, [apiKey, useSample, page, limit, search, filterType, filterNiche, filterStatus, sort])
 
   useEffect(() => {
     load()
@@ -229,7 +239,7 @@ export default function ListAmzPage() {
   // Clear bulk selection whenever the visible set changes.
   useEffect(() => {
     setSelected(new Set())
-  }, [page, limit, search, filterType, filterNiche, sort])
+  }, [page, limit, search, filterType, filterNiche, filterStatus, sort])
 
   async function sync() {
     if (!canSync) return
@@ -248,6 +258,26 @@ export default function ListAmzPage() {
     }
   }
 
+  // Toggle the status-reason popover for a SKU; fetch + cache its issues on first open.
+  async function loadIssues(sku: string | null) {
+    if (!sku) return
+    if (issuesOpenSku === sku) {
+      setIssuesOpenSku(null)
+      return
+    }
+    setIssuesOpenSku(sku)
+    if (issuesMap[sku] || useSample || !apiKey) return
+    setIssuesLoadingSku(sku)
+    try {
+      const r = await listAmzApi.getListingIssues(apiKey, sku)
+      setIssuesMap((m) => ({ ...m, [sku]: r.issues ?? [] }))
+    } catch {
+      setIssuesMap((m) => ({ ...m, [sku]: [] })) // cache empty → shows "no reason", avoids refetch loop
+    } finally {
+      setIssuesLoadingSku(null)
+    }
+  }
+
   // Sample mode filters/sorts/pages locally over the editable `rows`.
   const sampleView = useMemo(() => {
     if (!useSample) return null
@@ -258,13 +288,14 @@ export default function ListAmzPage() {
     }
     if (filterType) f = f.filter((r) => r.product_type === filterType)
     if (filterNiche) f = f.filter((r) => r.niche === filterNiche)
+    if (filterStatus) f = f.filter((r) => r.status === filterStatus)
     const col = sort === 'updated' ? 'updated_at' : 'amz_listed_at'
     f = [...f].sort((a, b) => {
       const diff = new Date(b[col] ?? 0).getTime() - new Date(a[col] ?? 0).getTime()
       return sort === 'oldest' ? -diff : diff
     })
     return f
-  }, [useSample, rows, search, filterType, filterNiche, sort])
+  }, [useSample, rows, search, filterType, filterNiche, filterStatus, sort])
 
   const totalCount = useSample ? sampleView!.length : total
   const totalPages = limit === 0 ? 1 : Math.max(1, Math.ceil(totalCount / limit))
@@ -651,6 +682,21 @@ export default function ListAmzPage() {
           ))}
         </select>
         <select
+          value={filterStatus}
+          onChange={(e) => {
+            setFilterStatus(e.target.value)
+            setPage(1)
+          }}
+          className="field"
+          title="Lọc theo Trạng thái"
+        >
+          <option value="">Trạng thái: tất cả</option>
+          <option value="BUYABLE,DISCOVERABLE">Live</option>
+          <option value="DISCOVERABLE">Inactive</option>
+          <option value="NOT_DISCOVERABLE">Hidden</option>
+          <option value="BUYABLE">Buyable only</option>
+        </select>
+        <select
           value={sort}
           onChange={(e) => {
             setSort(e.target.value as 'newest' | 'oldest' | 'updated')
@@ -781,10 +827,46 @@ export default function ListAmzPage() {
                       {r.price != null ? `$${r.price.toFixed(2)}` : '—'}
                     </td>
                     <td className="border-b border-line px-2 py-1.5">
-                      <span className={`badge ${st.badge}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-                        {st.label}
-                      </span>
+                      {st.label === 'inactive' || st.label === 'hidden' ? (
+                        <div className="relative inline-block">
+                          <button
+                            onClick={() => loadIssues(r.sku ?? r.id)}
+                            className={`badge ${st.badge} cursor-pointer`}
+                            title="Xem lý do"
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                            {st.label}
+                            <Info size={10} />
+                          </button>
+                          {issuesOpenSku === (r.sku ?? r.id) && (
+                            <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-md border border-line bg-panel p-2 text-[11px] shadow-lg">
+                              {issuesLoadingSku === (r.sku ?? r.id) ? (
+                                <div className="flex items-center gap-1.5 text-muted">
+                                  <Loader2 size={11} className="animate-spin" /> Đang tải…
+                                </div>
+                              ) : (issuesMap[r.sku ?? r.id]?.length ?? 0) === 0 ? (
+                                <div className="text-muted">Không có lý do cụ thể từ Amazon.</div>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {issuesMap[r.sku ?? r.id].map((issue, i) => (
+                                    <div
+                                      key={`${issue.code}-${i}`}
+                                      className={issue.severity === 'ERROR' ? 'text-danger' : 'text-warn'}
+                                    >
+                                      {issue.message}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={`badge ${st.badge}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                          {st.label}
+                        </span>
+                      )}
                     </td>
                     <td className="border-b border-line px-2 py-1.5">
                       <select

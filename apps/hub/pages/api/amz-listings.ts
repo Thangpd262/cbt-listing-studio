@@ -36,6 +36,7 @@ export default withAuth(async (req, res, auth) => {
   const limit = Number.isFinite(rawLimit) && rawLimit >= 0 ? rawLimit : 20 // 0 = all
   const type = ((req.query.type as string) || '').trim()
   const niche = ((req.query.niche as string) || '').trim()
+  const status = ((req.query.status as string) || '').trim()
   // Sort: newest/oldest by first-seen (created_at); "updated" by last sync time
   // (synced_at) — the cache has no separate updated_at column.
   const sort = ((req.query.sort as string) || 'newest').trim()
@@ -52,6 +53,7 @@ export default withAuth(async (req, res, auth) => {
   if (search) query = query.or(`sku.ilike.%${search}%,title.ilike.%${search}%,asin.ilike.%${search}%`)
   if (type) query = query.eq('product_type', type)
   if (niche) query = query.eq('niche', niche)
+  if (status) query = query.eq('status', status)
 
   // "updated" → last user edit (updated_at); newest/oldest → real Amazon
   // listing-creation date (amz_listed_at). Nulls last so any row missing the

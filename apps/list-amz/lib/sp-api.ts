@@ -26,6 +26,14 @@ export type SearchListingsItem = {
   }>
   offers?: Array<{ price?: { amount?: number } }>
   fulfillmentAvailability?: Array<{ quantity?: number }>
+  issues?: ListingIssue[]
+}
+// A listing-level issue (why Amazon flagged the listing).
+export type ListingIssue = {
+  code: string
+  message: string
+  severity: 'ERROR' | 'WARNING' | 'INFO'
+  attributeNames?: string[]
 }
 export type SearchListingsResponse = {
   numberOfResults?: number
@@ -40,6 +48,14 @@ export type GetListingItemResponse = {
   sku?: string
   summaries?: SearchListingsItem['summaries']
   attributes?: Record<string, unknown>
+}
+
+// getListingIssues — a single item's issues. Fetched on demand (user clicks an
+// inactive/hidden badge) rather than carried in the sync batch.
+export type GetListingIssuesResponse = {
+  sku?: string
+  summaries?: SearchListingsItem['summaries']
+  issues?: ListingIssue[]
 }
 
 export class SpApiClient {
@@ -81,6 +97,18 @@ export class SpApiClient {
       'GET',
       `/listings/2021-08-01/items/${sellerId}/${encodeURIComponent(sku)}?${params}`
     ) as Promise<GetListingItemResponse>
+  }
+
+  // Fetch one listing item's issues (for the status-reason popover).
+  getListingIssues(sellerId: string, sku: string) {
+    const params = new URLSearchParams({
+      marketplaceIds: this.marketplaceId,
+      includedData: 'issues,summaries',
+    })
+    return this.request(
+      'GET',
+      `/listings/2021-08-01/items/${sellerId}/${encodeURIComponent(sku)}?${params}`
+    ) as Promise<GetListingIssuesResponse>
   }
 
   private itemPath(sellerId: string, sku: string) {
