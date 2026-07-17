@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Plus } from 'lucide-react'
+import { RefreshCw, Plus, Download } from 'lucide-react'
 import Layout from '../components/Layout'
 import CrawlJobPanel, { type PanelGroup, type PanelConfig, type PanelPrompt } from '../components/CrawlJobPanel'
 import { SkeletonCards } from '../components/Skeleton'
@@ -188,7 +188,20 @@ export default function CrawlPage() {
   }
 
   return (
-    <Layout title="Etsy Crawl">
+    <Layout
+      title="Etsy Crawl"
+      headerRight={
+        <a
+          href="/extension.zip"
+          download
+          className="btn flex items-center gap-1.5 text-[11.5px]"
+          title="Tải Chrome Extension v1.9.2"
+        >
+          <Download size={13} />
+          Tải Extension
+        </a>
+      }
+    >
       {/* Subtitle */}
       <p className="mb-2.5 text-[12.5px] text-muted">
         Chọn dòng hàng, sửa tiêu đề, chọn/xoá ảnh rồi bấm Tạo Job.

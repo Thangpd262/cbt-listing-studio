@@ -5,7 +5,7 @@ import Sidebar from './Sidebar'
 import { useAuth } from '../lib/auth-context'
 import { usePlatform, MARKETPLACES, type Platform } from '../lib/platform-context'
 
-export default function Layout({ title, children }: { title?: string; children: ReactNode }) {
+export default function Layout({ title, headerRight, children }: { title?: string; headerRight?: ReactNode; children: ReactNode }) {
   const { user, logout } = useAuth()
   const { platform, marketplace, setPlatform, setMarketplace } = usePlatform()
 
@@ -58,7 +58,12 @@ export default function Layout({ title, children }: { title?: string; children: 
         </header>
 
         <main className="relative flex-1 overflow-auto p-3.5">
-          {title && <h1 className="mb-3 font-disp text-[17px] font-bold text-fg">{title}</h1>}
+          {title && (
+            <div className="mb-3 flex items-center gap-3">
+              <h1 className="font-disp text-[17px] font-bold text-fg">{title}</h1>
+              {headerRight}
+            </div>
+          )}
           {children}
         </main>
       </div>
