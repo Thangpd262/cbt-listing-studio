@@ -8,7 +8,7 @@ import { type SampleListing } from '../lib/sample-data'
 type GalleryImage = { id: string; url: string; ai?: boolean }
 
 export type PanelGroup = { id: string; name: string }
-export type PanelConfig = { id: string; name: string; from: string; productType?: string | null; imageUrls?: string[] }
+export type PanelConfig = { id: string; name: string; from: string; productType?: string | null; imageUrls?: string[]; overrides?: Record<string, string> }
 // Model is bound to the prompt (no separate model picker) — carry its metadata so
 // the card can show a chip and the legacy "no model" warning.
 export type PanelPrompt = {
@@ -259,6 +259,8 @@ export default function CrawlJobPanel({
       setSubmitting(true)
       try {
         const searchTerms = tags.split(/[,\n]/).map((t) => t.trim()).filter(Boolean).join('\n')
+        // Merge order: config overrides < panel user inputs (panel always wins)
+        const configOverrides = selectedConfig?.overrides ?? {}
         const r = await listAmzApi.createListing(apiKey, {
           selling_account_id: sellingAccountId,
           sku,
@@ -266,8 +268,9 @@ export default function CrawlJobPanel({
           config_key: configKey,
           ai_description: aiDescription,
           field_values: {
+            ...configOverrides,
             item_name: title.trim(),
-            // Skip price if 0 so the config default kicks in instead
+            // Skip price if 0 so the config default (or user config override) kicks in
             ...(parseFloat(price) > 0 ? { price } : {}),
             img: mainUrl,
             images: extraUrls.join('\n'),

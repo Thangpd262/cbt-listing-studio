@@ -84,6 +84,7 @@ export default function CrawlPage() {
           from: x.based_on,
           productType: x.product_type,
           imageUrls: overrideImages(x.overrides),
+          overrides: (x.overrides ?? {}) as Record<string, string>,
         }))
       : SAMPLE_CONFIGS
 
