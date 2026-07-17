@@ -7,7 +7,26 @@ import { withAuth, ok, error, createSupabaseClient } from '@cbt/shared'
 // Query params: page, limit (0 = all), search, type (product_type), niche.
 // Response data: { listings, last_synced_at, total, page, limit }.
 const COLS =
-  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, updated_at, amz_listed_at, synced_at'
+  'id, marketplace_id, asin, sku, title, status, price, quantity, image_url, product_type, niche, created_at, updated_at, amz_listed_at, synced_at, raw'
+
+// SP-API attributes → editable fields for the listing edit modal.
+type AttrValue = { value?: string; media_location?: string }
+function deriveEditFields(raw: unknown) {
+  const attributes = ((raw as { attributes?: Record<string, unknown> })?.attributes ?? {}) as Record<
+    string,
+    AttrValue[] | undefined
+  >
+  const bullet_points = (attributes.bullet_point ?? []).map((b) => b?.value ?? '').filter(Boolean)
+  const description = attributes.product_description?.[0]?.value ?? null
+  // Images: main first, then other_product_image_locator_1..N in order.
+  const imageKeys = Object.keys(attributes)
+    .filter((k) => k === 'main_product_image_locator' || k.startsWith('other_product_image_locator_'))
+    .sort((a, b) => (a === 'main_product_image_locator' ? -1 : b === 'main_product_image_locator' ? 1 : a.localeCompare(b)))
+  const images = imageKeys
+    .map((k) => attributes[k]?.[0]?.media_location ?? '')
+    .filter(Boolean)
+  return { bullet_points, description, images, attributes: attributes as Record<string, unknown> }
+}
 
 export default withAuth(async (req, res, auth) => {
   if (req.method !== 'GET') return error(res, 405, 'Method not allowed')
@@ -57,8 +76,14 @@ export default withAuth(async (req, res, auth) => {
     .limit(1)
     .maybeSingle()
 
+  // Strip the heavy `raw` blob but surface the editable fields derived from it.
+  const listings = (data ?? []).map((row) => {
+    const { raw, ...rest } = row as typeof row & { raw: unknown }
+    return { ...rest, ...deriveEditFields(raw) }
+  })
+
   return ok(res, {
-    listings: data ?? [],
+    listings,
     last_synced_at: fresh?.synced_at ?? null,
     total: count ?? (data ?? []).length,
     page,

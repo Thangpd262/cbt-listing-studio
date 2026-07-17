@@ -6,6 +6,7 @@ import {
   Pencil,
   Trash2,
   X,
+  Plus,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -33,6 +34,10 @@ const SAMPLE: AmzCachedListing[] = [
     updated_at: '2026-07-16T10:00:00Z',
     amz_listed_at: '2026-06-15T08:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
+    bullet_points: ['100% soft combed cotton', 'Unisex fit', 'Boho floral print', 'Machine washable', 'Printed in the USA'],
+    description: 'A soft, breathable boho floral tee for everyday wear.',
+    images: ['https://picsum.photos/seed/amz1a/400', 'https://picsum.photos/seed/amz1b/400'],
+    attributes: { condition_type: [{ value: 'new_new' }], generic_keyword: [{ value: 'boho tee floral women cotton' }] },
   },
   {
     id: 's2',
@@ -50,6 +55,10 @@ const SAMPLE: AmzCachedListing[] = [
     updated_at: '2026-07-12T10:00:00Z',
     amz_listed_at: '2026-06-20T08:00:00Z',
     synced_at: '2026-07-14T07:05:00Z',
+    bullet_points: ['11oz ceramic mug', 'Rose flower design', 'Dishwasher safe', 'Great boho gift'],
+    description: 'Ceramic 11oz mug with a rose boho design — a thoughtful gift.',
+    images: ['https://picsum.photos/seed/amz2a/400'],
+    attributes: { condition_type: [{ value: 'new_new' }] },
   },
 ]
 
@@ -127,9 +136,34 @@ export default function ListAmzPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<AmzCachedListing | null>(null)
-  const [editNiche, setEditNiche] = useState('')
+  const [editTab, setEditTab] = useState<'content' | 'price' | 'images' | 'attrs'>('content')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // Tab 1 — Nội dung
+  const [editItemName, setEditItemName] = useState('')
+  const [editBullets, setEditBullets] = useState<string[]>(['', '', '', '', ''])
+  const [editDescription, setEditDescription] = useState('')
+  const [editKeywords, setEditKeywords] = useState('')
+  // Tab 2 — Giá & Kho
+  const [editPrice, setEditPrice] = useState('')
+  const [editQty, setEditQty] = useState('')
+  // Tab 3 — Ảnh
+  const [editImages, setEditImages] = useState<string[]>([])
+  const [newImageUrl, setNewImageUrl] = useState('')
+  // Tab 4 — Attributes (extra, non-content attributes as JSON strings)
+  const [editAttrs, setEditAttrs] = useState<Record<string, string>>({})
+  const [attrErrors, setAttrErrors] = useState<Record<string, string>>({})
+  const [newAttrKey, setNewAttrKey] = useState('')
+  const [newAttrValue, setNewAttrValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; sku: string } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState(false)
+
+  // Content attribute keys managed by the dedicated tabs (excluded from Tab 4).
+  const CONTENT_ATTR_KEYS = new Set([
+    'item_name', 'bullet_point', 'product_description', 'generic_keyword',
+    'main_product_image_locator', 'purchasable_offer', 'list_price',
+    'fulfillment_availability', 'condition_type', 'parentage_level', 'child_parent_sku_relationship',
+  ])
 
   // Debounce the search box into the query value; reset to page 1 on change.
   useEffect(() => {
@@ -254,21 +288,189 @@ export default function ListAmzPage() {
 
   function openEdit(row: AmzCachedListing) {
     setEditTarget(row)
-    setEditNiche(row.niche ?? '')
+    setEditTab('content')
+    setSaveError(null)
+    setSaving(false)
+    setEditItemName(row.title ?? '')
+    const bp = Array.isArray(row.bullet_points) ? row.bullet_points : []
+    setEditBullets([bp[0] ?? '', bp[1] ?? '', bp[2] ?? '', bp[3] ?? '', bp[4] ?? ''])
+    setEditDescription(row.description ?? '')
+    const gk = (row.attributes as Record<string, { value?: string }[]> | undefined)?.generic_keyword
+    setEditKeywords(Array.isArray(gk) ? gk[0]?.value ?? '' : '')
+    setEditPrice(row.price != null ? String(row.price) : '')
+    setEditQty(row.quantity != null ? String(row.quantity) : '')
+    setEditImages(Array.isArray(row.images) && row.images.length ? row.images : row.image_url ? [row.image_url] : [])
+    setNewImageUrl('')
+    // Tab 4 shows only extra (non-content) attributes as editable JSON.
+    const raw = (row.attributes as Record<string, unknown>) ?? {}
+    const mapped: Record<string, string> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (CONTENT_ATTR_KEYS.has(k) || k.startsWith('other_product_image_locator')) continue
+      mapped[k] = JSON.stringify(v, null, 2)
+    }
+    setEditAttrs(mapped)
+    setAttrErrors({})
+    setNewAttrKey('')
+    setNewAttrValue('')
   }
 
-  async function saveEdit() {
-    if (!editTarget) return
-    const value = editNiche.trim()
-    setRows((rs) => rs.map((x) => (x.id === editTarget.id ? { ...x, niche: value || null } : x)))
-    setEditTarget(null)
-    if (useSample) return
-    try {
-      await listAmzApi.updateNiche(apiKey!, editTarget.id, value)
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Không lưu được')
-      load()
+  const editMarketplace = () => editTarget?.marketplace_id ?? 'ATVPDKIKX0DER'
+  const attrVal = (value: string) => [{ value, language_tag: 'en_US', marketplace_id: editMarketplace() }]
+
+  // Parse Tab-4 custom attribute JSON. Returns per-key errors when invalid.
+  function parseExtras(): { ok: boolean; values: Record<string, unknown>; errors: Record<string, string> } {
+    const values: Record<string, unknown> = {}
+    const errors: Record<string, string> = {}
+    for (const [k, rawStr] of Object.entries(editAttrs)) {
+      if (!rawStr.trim()) continue
+      try {
+        values[k] = JSON.parse(rawStr)
+      } catch {
+        errors[k] = 'JSON không hợp lệ'
+      }
     }
+    return { ok: Object.keys(errors).length === 0, values, errors }
+  }
+
+  // Attributes to push: preserve non-content raw attrs, set generic_keyword,
+  // merge custom extras. Content keys are rebuilt from top-level fields server-side.
+  function buildAttributes(extras: Record<string, unknown>): Record<string, unknown> {
+    const base: Record<string, unknown> = {}
+    const raw = (editTarget?.attributes as Record<string, unknown>) ?? {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (CONTENT_ATTR_KEYS.has(k) || k.startsWith('other_product_image_locator')) continue
+      base[k] = v
+    }
+    if (editKeywords.trim()) base.generic_keyword = attrVal(editKeywords.trim())
+    return { ...base, ...extras }
+  }
+
+  // Full content payload — sent whole on every content/images/attrs save so the
+  // server's listing rebuild never drops an unedited field (destructive-update guard).
+  function contentBody(extras: Record<string, unknown>) {
+    return {
+      title: editItemName,
+      bullet_points: editBullets.filter((b) => b.trim()),
+      description: editDescription || undefined,
+      images: editImages,
+      attributes: buildAttributes(extras),
+    }
+  }
+
+  // Guard: sample mode / no key → surface a message, don't call the API (AC #8).
+  function requireKey(): string | null {
+    if (useSample || !apiKey) {
+      setSaveError('Cần API key để lưu — đăng nhập và đồng bộ trước.')
+      return null
+    }
+    return apiKey
+  }
+
+  async function runSave(fn: () => Promise<void>) {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await fn()
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Lưu thất bại')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Content, Images, Attributes tabs all push a full 'update' job via PUT.
+  async function saveViaUpdate(after: () => void) {
+    const key = requireKey()
+    if (!key || !editTarget) return
+    const { ok: pOk, values, errors } = parseExtras()
+    if (!pOk) {
+      setAttrErrors(errors)
+      setEditTab('attrs')
+      return
+    }
+    setAttrErrors({})
+    await runSave(async () => {
+      const idOrSku = editTarget.sku ?? editTarget.id
+      const r = await listAmzApi.updateListing(key, idOrSku, contentBody(values))
+      if (r.status === 'failed') throw new Error(r.error ?? 'SP-API từ chối cập nhật')
+      after()
+      setEditTarget(null)
+    })
+  }
+
+  function saveContent() {
+    saveViaUpdate(() =>
+      setRows((rs) => rs.map((x) => (x.id === editTarget!.id ? { ...x, title: editItemName } : x)))
+    )
+  }
+
+  function saveImages() {
+    saveViaUpdate(() =>
+      setRows((rs) => rs.map((x) => (x.id === editTarget!.id ? { ...x, image_url: editImages[0] ?? x.image_url } : x)))
+    )
+  }
+
+  function saveAttrs() {
+    saveViaUpdate(() => {})
+  }
+
+  async function savePriceQty() {
+    const key = requireKey()
+    if (!key || !editTarget) return
+    await runSave(async () => {
+      const idOrSku = editTarget.sku ?? editTarget.id
+      const price = parseFloat(editPrice)
+      const quantity = parseInt(editQty, 10)
+      const r = await listAmzApi.updatePriceQty(key, idOrSku, {
+        price: Number.isFinite(price) ? price : undefined,
+        quantity: Number.isFinite(quantity) ? quantity : undefined,
+      })
+      if (r.status === 'failed') throw new Error(r.error ?? 'SP-API từ chối cập nhật')
+      setRows((rs) =>
+        rs.map((x) =>
+          x.id === editTarget.id
+            ? {
+                ...x,
+                price: Number.isFinite(price) ? price : x.price,
+                quantity: Number.isFinite(quantity) ? quantity : x.quantity,
+              }
+            : x
+        )
+      )
+      setEditTarget(null)
+    })
+  }
+
+  // Dispatch the correct save handler for the active tab.
+  function saveActiveTab() {
+    if (editTab === 'content') saveContent()
+    else if (editTab === 'price') savePriceQty()
+    else if (editTab === 'images') saveImages()
+    else saveAttrs()
+  }
+
+  // Tab 3 helpers.
+  function moveImage(i: number, dir: -1 | 1) {
+    setEditImages((imgs) => {
+      const j = i + dir
+      if (j < 0 || j >= imgs.length) return imgs
+      const next = [...imgs]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+  function addImage() {
+    const u = newImageUrl.trim()
+    if (!u) return
+    setEditImages((imgs) => [...imgs, u])
+    setNewImageUrl('')
+  }
+  function addAttr() {
+    const k = newAttrKey.trim()
+    if (!k) return
+    setEditAttrs((a) => ({ ...a, [k]: newAttrValue.trim() || '""' }))
+    setNewAttrKey('')
+    setNewAttrValue('')
   }
 
   async function confirmDelete() {
@@ -517,7 +719,7 @@ export default function ListAmzPage() {
                         <button
                           onClick={() => openEdit(r)}
                           className="btn !px-1.5 !py-0.5 !text-[10px]"
-                          title="Sửa nhóm"
+                          title="Sửa listing"
                         >
                           <Pencil size={11} />
                         </button>
@@ -636,34 +838,190 @@ export default function ListAmzPage() {
         </div>
       )}
 
-      {/* Edit (niche) modal */}
+      {/* Edit listing modal (4 tabs) */}
       {editTarget && (
-        <Overlay onClose={() => setEditTarget(null)}>
-          <div className="w-[360px] max-w-full rounded-lg border border-line bg-panel p-4">
-            <div className="mb-1 text-sm font-medium">Sửa nhóm</div>
-            <div className="mb-3 truncate text-[11px] text-muted" title={editTarget.title ?? ''}>
-              {editTarget.sku ?? editTarget.asin} · {editTarget.title ?? '—'}
+        <Overlay onClose={() => (saving ? null : setEditTarget(null))}>
+          <div className="flex max-h-[90vh] w-[720px] max-w-[95vw] flex-col rounded-lg border border-line bg-panel">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-line p-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">Sửa listing</div>
+                <div className="mt-0.5 truncate text-[11px] text-muted" title={editTarget.title ?? ''}>
+                  <span className="font-mono">{editTarget.sku ?? editTarget.asin}</span> · {editTarget.title ?? '—'}
+                </div>
+              </div>
+              <button onClick={() => setEditTarget(null)} className="btn !px-1.5 !py-0.5" title="Đóng">
+                <X size={14} />
+              </button>
             </div>
-            <label className="mb-1 block text-[11px] text-muted">Nhóm (niche)</label>
-            <input
-              value={editNiche}
-              onChange={(e) => setEditNiche(e.target.value)}
-              list="niche-options"
-              placeholder="Chọn hoặc nhập nhóm mới…"
-              className="field mb-3 w-full"
-              autoFocus
-            />
-            <datalist id="niche-options">
-              {nicheOptions.map((n) => (
-                <option key={n} value={n} />
+
+            {/* Tab bar */}
+            <div className="flex border-b border-line px-4">
+              {([
+                { v: 'content', label: 'Nội dung' },
+                { v: 'price', label: 'Giá & Kho' },
+                { v: 'images', label: 'Ảnh' },
+                { v: 'attrs', label: 'Attributes' },
+              ] as const).map((t) => (
+                <button
+                  key={t.v}
+                  onClick={() => setEditTab(t.v)}
+                  className={`px-3 py-2 text-xs font-medium transition ${
+                    editTab === t.v ? 'border-b-2 border-acc text-acc' : 'text-muted hover:text-fg'
+                  }`}
+                >
+                  {t.label}
+                </button>
               ))}
-            </datalist>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEditTarget(null)} className="btn">
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {editTab === 'content' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">
+                      Tên sản phẩm (item_name){' '}
+                      <span className={editItemName.length > 200 ? 'text-danger' : editItemName.length > 150 ? 'text-warn' : 'text-faint'}>
+                        {editItemName.length}/200
+                      </span>
+                    </label>
+                    <input value={editItemName} onChange={(e) => setEditItemName(e.target.value)} className="field w-full" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">Gạch đầu dòng 1–5 (bullet_point)</label>
+                    <div className="space-y-1.5">
+                      {editBullets.map((b, i) => (
+                        <textarea
+                          key={i}
+                          value={b}
+                          maxLength={500}
+                          onChange={(e) => setEditBullets((bs) => bs.map((x, j) => (j === i ? e.target.value : x)))}
+                          placeholder={`Gạch đầu dòng ${i + 1}`}
+                          className="field min-h-[38px] w-full resize-y text-xs"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">
+                      Mô tả (product_description){' '}
+                      <span className={editDescription.length > 2000 ? 'text-danger' : 'text-faint'}>{editDescription.length}/2000</span>
+                    </label>
+                    <textarea rows={5} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="field w-full resize-y" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">Từ khoá (generic_keyword)</label>
+                    <input value={editKeywords} onChange={(e) => setEditKeywords(e.target.value)} placeholder="kw1, kw2, kw3" className="field w-full" />
+                  </div>
+                </div>
+              )}
+
+              {editTab === 'price' && (
+                <div className="grid max-w-sm grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">Giá (USD)</label>
+                    <input type="number" step="0.01" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="field w-full" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-muted">Số lượng</label>
+                    <input type="number" step="1" min="0" value={editQty} onChange={(e) => setEditQty(e.target.value)} className="field w-full" />
+                  </div>
+                </div>
+              )}
+
+              {editTab === 'images' && (
+                <div className="space-y-3">
+                  {editImages.length === 0 && <div className="text-[12px] text-faint">Chưa có ảnh — thêm URL bên dưới.</div>}
+                  <div className="grid grid-cols-3 gap-2">
+                    {editImages.map((url, i) => (
+                      <div key={`${url}-${i}`} className="group relative">
+                        <img src={url} alt="" className="aspect-square w-full rounded border border-line object-cover" />
+                        <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[9px] font-medium text-white">
+                          {i === 0 ? 'Chính' : `Phụ ${i}`}
+                        </span>
+                        <div className="absolute inset-x-1 bottom-1 flex justify-between opacity-0 transition group-hover:opacity-100">
+                          <div className="flex gap-0.5">
+                            <button onClick={() => moveImage(i, -1)} disabled={i === 0} className="rounded bg-black/70 px-1 text-white disabled:opacity-30" title="Sang trái">
+                              <ChevronLeft size={12} />
+                            </button>
+                            <button onClick={() => moveImage(i, 1)} disabled={i === editImages.length - 1} className="rounded bg-black/70 px-1 text-white disabled:opacity-30" title="Sang phải">
+                              <ChevronRight size={12} />
+                            </button>
+                          </div>
+                          <button onClick={() => setEditImages((imgs) => imgs.filter((_, j) => j !== i))} className="rounded bg-danger px-1 text-white" title="Xoá ảnh">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={newImageUrl}
+                      onChange={(e) => setNewImageUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addImage()}
+                      placeholder="https://…/image.jpg"
+                      className="field flex-1"
+                    />
+                    <button onClick={addImage} className="btn">
+                      <Plus size={13} /> Thêm
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {editTab === 'attrs' && (
+                <div className="space-y-3">
+                  {Object.keys(editAttrs).length === 0 && (
+                    <div className="text-[12px] text-faint">Không có attribute tuỳ chỉnh. Thêm bên dưới nếu cần.</div>
+                  )}
+                  {Object.entries(editAttrs).map(([k, v]) => (
+                    <div key={k}>
+                      <div className="mb-1 flex items-center justify-between">
+                        <label className="font-mono text-[11px] text-muted">{k}</label>
+                        <button
+                          onClick={() => setEditAttrs((a) => { const n = { ...a }; delete n[k]; return n })}
+                          className="text-[11px] text-danger hover:underline"
+                        >
+                          xoá
+                        </button>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={v}
+                        onChange={(e) => setEditAttrs((a) => ({ ...a, [k]: e.target.value }))}
+                        className={`field w-full resize-y font-mono text-[11px] ${attrErrors[k] ? 'border-danger' : ''}`}
+                      />
+                      {attrErrors[k] && <div className="mt-0.5 text-[11px] text-danger">{attrErrors[k]}</div>}
+                    </div>
+                  ))}
+                  <div className="rounded-md border border-dashed border-line p-2">
+                    <div className="mb-1.5 text-[11px] font-medium text-muted">+ Thêm attribute</div>
+                    <input value={newAttrKey} onChange={(e) => setNewAttrKey(e.target.value)} placeholder="attribute_key" className="field mb-1.5 w-full font-mono text-[11px]" />
+                    <textarea
+                      rows={2}
+                      value={newAttrValue}
+                      onChange={(e) => setNewAttrValue(e.target.value)}
+                      placeholder='[{"value": "..."}]'
+                      className="field mb-1.5 w-full resize-y font-mono text-[11px]"
+                    />
+                    <button onClick={addAttr} className="btn !text-[11px]">
+                      <Plus size={12} /> Thêm attribute
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-2 border-t border-line p-4">
+              {saveError && <div className="mr-auto text-[11px] text-danger">{saveError}</div>}
+              <button onClick={() => setEditTarget(null)} disabled={saving} className={`btn ${saveError ? '' : 'ml-auto'}`}>
                 Huỷ
               </button>
-              <button onClick={saveEdit} className="btn btn-acc">
-                Lưu
+              <button onClick={saveActiveTab} disabled={saving} className="btn btn-acc">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : null} Lưu &amp; Đồng bộ
               </button>
             </div>
           </div>

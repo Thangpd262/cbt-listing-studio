@@ -417,6 +417,12 @@ export type AmzCachedListing = {
   updated_at: string | null
   amz_listed_at: string | null // Amazon listing-creation date (SP-API summaries.createdDate)
   synced_at: string
+  // Edit-modal content, surfaced from the cached SP-API item (raw.attributes).
+  // Absent on older cache rows until the next sync/list fetch.
+  bullet_points?: string[]
+  description?: string | null
+  images?: string[]
+  attributes?: Record<string, unknown>
 }
 
 // One page of cached listings (server-side pagination on the hub-local route).
@@ -526,6 +532,35 @@ export const listAmzApi = {
       body: JSON.stringify(body),
     })
     return unwrap<{ product_id: string; job_id: string; status: string; error?: string }>(res)
+  },
+  // Edit a listing's content (title/bullets/description/images/attributes) → PUT
+  // pushes an SP-API 'update' job. `idOrSku` resolves to amz_products by id or SKU.
+  async updateListing(
+    apiKey: string,
+    idOrSku: string,
+    body: {
+      title?: string
+      bullet_points?: string[]
+      description?: string
+      images?: string[]
+      attributes?: Record<string, unknown>
+    }
+  ) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/listings/${encodeURIComponent(idOrSku)}`, {
+      method: 'PUT',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<{ product_id: string; job_id?: string; status: string; error?: string }>(res)
+  },
+  // Edit price/quantity only → PATCH pushes a lighter SP-API 'price_qty' job.
+  async updatePriceQty(apiKey: string, idOrSku: string, body: { price?: number; quantity?: number }) {
+    const res = await fetch(`${LIST_AMZ_URL}/api/listings/${encodeURIComponent(idOrSku)}`, {
+      method: 'PATCH',
+      headers: apiKeyHeaders(apiKey),
+      body: JSON.stringify(body),
+    })
+    return unwrap<{ product_id: string; job_id?: string; status: string; error?: string }>(res)
   },
 }
 
