@@ -224,7 +224,7 @@ export const crawlApi = {
   },
 
   // Patch editable fields — title and/or the persisted AI image list.
-  async updateListing(apiKey: string, id: string, body: { title?: string; ai_images?: string[]; images?: string[] }) {
+  async updateListing(apiKey: string, id: string, body: { title?: string; ai_images?: string[]; images?: string[]; status?: string }) {
     const res = await fetch(`${CRAWL_URL}/api/listings/${id}`, {
       method: 'PUT',
       headers: apiKeyHeaders(apiKey),
