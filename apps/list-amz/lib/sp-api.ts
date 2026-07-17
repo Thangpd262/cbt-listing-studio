@@ -132,8 +132,27 @@ export class SpApiClient {
 }
 
 // Build a Listings Items PUT body from our product payload.
+// Attributes that Amazon rejects with 90000900 for most product types.
+// Spread from raw SP-API sync data can include these — strip them before PUT.
+const INAPPLICABLE_ATTRS = new Set([
+  'dangerous_goods_regulations',
+  'size_map',
+  'included_components',
+  'batteries_required',
+  'lithium_battery_packaging',
+  'lithium_battery_energy_content',
+  'lithium_battery_weight',
+  'number_of_lithium_ion_cells',
+  'number_of_lithium_metal_cells',
+])
+
 export function buildListingBody(payload: ListingPayload, marketplaceId: string) {
   const attr = (value: string) => [{ value, language_tag: 'en_US', marketplace_id: marketplaceId }]
+
+  // Strip inapplicable attributes that cause 90000900 warnings.
+  const safeAttrs = Object.fromEntries(
+    Object.entries(payload.attributes ?? {}).filter(([k]) => !INAPPLICABLE_ATTRS.has(k))
+  )
 
   const attributes: Record<string, unknown> = {
     item_name: attr(payload.title),
@@ -154,7 +173,7 @@ export function buildListingBody(payload: ListingPayload, marketplaceId: string)
           ],
         }
       : {}),
-    ...(payload.attributes ?? {}),
+    ...safeAttrs,
   }
 
   // Extra image slots (other_product_image_locator_1..N).
