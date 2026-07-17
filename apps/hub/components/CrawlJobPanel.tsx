@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink, Link, Plus } from 'lucide-react'
+import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink, Link, Plus, Upload } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
 import ImageLightbox from './ImageLightbox'
 import ListingAiCost from './ListingAiCost'
@@ -79,6 +79,8 @@ export default function CrawlJobPanel({
   )
   // URL input for manually adding extra images.
   const [urlInput, setUrlInput] = useState('')
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [mainId, setMainId] = useState<string | null>(null)
   // Single Etsy image used as the AI style reference (radio behavior).
   const [refImageId, setRefImageId] = useState<string | null>(null)
@@ -186,6 +188,49 @@ export default function CrawlJobPanel({
     }, 500)
     return () => clearTimeout(t)
   }, [title, apiKey, listing.id])
+
+  // Upload image files to the server, get back public URLs, add to gallery.
+  async function uploadFiles(files: FileList) {
+    if (!apiKey || !files.length) return
+    setUploadLoading(true)
+    const addedUrls: string[] = []
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`${file.name} quá lớn (tối đa 10MB)`)
+          continue
+        }
+        // Read file → base64
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            resolve(result.split(',')[1]) // strip "data:...;base64," prefix
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        const res = await fetch('/api/upload-image', {
+          method: 'POST',
+          headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64, listing_id: listing.id }),
+        })
+        const body = await res.json() as { success?: boolean; data?: { url: string }; error?: string }
+        if (!res.ok || !body.success) throw new Error(body.error ?? 'Upload thất bại')
+        addedUrls.push(body.data!.url)
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Upload ảnh thất bại')
+    } finally {
+      setUploadLoading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+    if (!addedUrls.length) return
+    const newImgs = addedUrls.map((url, i) => ({ id: `extra-${Date.now()}-${i}`, url, extra: true as const }))
+    setImages((imgs) => [...imgs, ...newImgs])
+    setSelected((s) => { const n = new Set(s); newImgs.forEach((img) => n.add(img.id)); return n })
+    persistExtraImages([...extraImages.map((i) => i.url), ...addedUrls])
+  }
 
   // Only user configs are selectable now; resolve to the base product_configs key.
   function resolveConfigKey(sel: string): string | null {
@@ -551,6 +596,7 @@ export default function CrawlJobPanel({
               ))}
             </div>
           )}
+          {/* URL input row */}
           <div className="flex gap-1.5">
             <textarea
               value={urlInput}
@@ -558,18 +604,38 @@ export default function CrawlJobPanel({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addExtraUrls() }
               }}
-              placeholder="Dán 1 hoặc nhiều URL ảnh (mỗi dòng 1 link)"
+              placeholder="Dán URL ảnh (mỗi dòng 1 link, Ctrl+Enter để thêm)"
               rows={2}
               className="field min-h-[44px] flex-1 resize-y text-[12px]"
             />
             <button
               onClick={addExtraUrls}
               disabled={!urlInput.trim()}
-              title="Thêm ảnh (Ctrl+Enter)"
+              title="Thêm qua link (Ctrl+Enter)"
               className="flex-shrink-0 self-start rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-[12px] font-medium text-fg transition hover:bg-panel disabled:opacity-40"
             >
               <Plus size={13} />
             </button>
+          </div>
+          {/* File upload row */}
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => e.target.files && uploadFiles(e.target.files)}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadLoading || !apiKey}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-[12px] font-medium text-fg transition hover:bg-panel disabled:opacity-40"
+            >
+              {uploadLoading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+              Upload từ máy
+            </button>
+            <span className="text-[11px] text-faint">JPG/PNG/WEBP · tối đa 10MB/ảnh · tự xóa sau 21 ngày</span>
           </div>
         </div>
 

@@ -4,6 +4,7 @@
     "pages/api/**/*.ts": { "maxDuration": 30 }
   },
   "crons": [
-    { "path": "/api/keep-warm", "schedule": "*/5 * * * *" }
+    { "path": "/api/keep-warm",       "schedule": "*/5 * * * *" },
+    { "path": "/api/cleanup-uploads", "schedule": "0 2 * * *" }
   ]
 }
