@@ -122,7 +122,7 @@ export default function CrawlPage() {
           shop: l.shop_name ?? '—',
           group: '—',
           price: l.price ?? 0,
-          hasJob: l.status === 'job_created',
+          hasJob: (l.status as string) === 'job_created',
           images: l.images ?? [],
           aiImages: l.ai_images ?? [],
           email: l.created_by_email ?? undefined,
