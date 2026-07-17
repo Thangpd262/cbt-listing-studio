@@ -34,7 +34,7 @@ export default withAuth(async (req, res, auth) => {
   // 2. Run pipeline inline.
   try {
     const result = await runGenerationPipeline(
-      { id: job.id, account_id: job.account_id, listing_id: job.listing_id, platform },
+      { id: job.id, account_id: job.account_id, user_id: auth.user_id, listing_id: job.listing_id, platform },
       apiKey,
       imageProvider
     )

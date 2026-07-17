@@ -25,6 +25,8 @@ export const queryKeys = {
   userConfigs: ['user-configs'] as const,
   productGroups: ['product-groups'] as const,
   prompts: ['prompts'] as const,
+  models: ['models'] as const,
+  spend: (period: string, userId?: string) => ['spend', period, userId ?? 'me'] as const,
   sellingAccounts: ['selling-accounts'] as const,
   team: ['team'] as const,
   pendingTeam: ['team', 'pending'] as const,
@@ -62,6 +64,30 @@ export function usePrompts() {
     queryFn: () => generatorApi.getPrompts(apiKey as string),
     enabled: !!apiKey && serviceConfigured.generator,
     staleTime: STALE_LONG,
+  })
+}
+
+// Available image models — rarely change, cache long.
+export function useModels() {
+  const { apiKey } = useAuth()
+  return useQuery({
+    queryKey: queryKeys.models,
+    queryFn: () => generatorApi.getModels(apiKey as string),
+    enabled: !!apiKey && serviceConfigured.generator,
+    // Models only change on deploy — never refetch during a session, keep cached 1h.
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60,
+  })
+}
+
+// AI spend summary for a period (+ optional admin user filter).
+export function useSpend(period: string, userId?: string) {
+  const { apiKey } = useAuth()
+  return useQuery({
+    queryKey: queryKeys.spend(period, userId),
+    queryFn: () => generatorApi.getSpend(apiKey as string, { period, user_id: userId }),
+    enabled: !!apiKey && serviceConfigured.generator,
+    staleTime: STALE_JOBS,
   })
 }
 

@@ -1,12 +1,27 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Save, Pencil, Trash2, RefreshCw, Loader2, X } from 'lucide-react'
 import Layout from '../components/Layout'
 import { SkeletonRows } from '../components/Skeleton'
 import { useAuth } from '../lib/auth-context'
-import { generatorApi, serviceConfigured, type PromptTemplate } from '../lib/api'
-import { usePrompts } from '../lib/queries'
+import { generatorApi, serviceConfigured, type PromptTemplate, type ImageModel } from '../lib/api'
+import { usePrompts, useModels } from '../lib/queries'
 
-const MODELS = ['gpt-image-1', 'gemini-2.5-flash-image']
+// Human labels for provider groups in the model dropdown.
+const PROVIDER_LABEL: Record<string, string> = {
+  openai: 'OpenAI',
+  google: 'Google',
+  blackforestlabs: 'Black Forest Labs',
+  recraft: 'Recraft',
+  stability: 'Stability',
+}
+
+// Offline fallback so the dropdown works in sample mode (no generator wired).
+const FALLBACK_MODELS: ImageModel[] = [
+  { id: 'gpt-image-1', label: 'GPT Image 1', provider: 'openai', cost_per_image_usd: 0.04, supports_multi_image: true, max_images_per_request: 10 },
+  { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', provider: 'google', cost_per_image_usd: 0.039, supports_multi_image: false, max_images_per_request: 1 },
+]
+
+const DEFAULT_MODEL = 'gpt-image-1'
 
 // prompt_templates.prompt_type is image|title|description; the UI offers
 // "image" and "text" (mapped to description) per the product spec.
@@ -19,22 +34,25 @@ type FormState = {
   id: string | null
   name: string
   model: string
+  system_instruction: string
   content: string
   prompt_type: string
 }
 
-const EMPTY: FormState = { id: null, name: '', model: MODELS[0], content: '', prompt_type: 'image' }
+const EMPTY: FormState = { id: null, name: '', model: DEFAULT_MODEL, system_instruction: '', content: '', prompt_type: 'image' }
 
 const SAMPLE: PromptTemplate[] = [
-  { id: 's1', name: 'Canvas tối giản nền trắng', platform: null, prompt_type: 'image', content: 'minimalist canvas, white background…', model: 'gpt-image-1', is_default: false, created_at: '' },
-  { id: 's2', name: 'Boho floral watercolor', platform: null, prompt_type: 'image', content: 'boho floral watercolor style…', model: 'gemini-2.5-flash-image', is_default: false, created_at: '' },
+  { id: 's1', name: 'Canvas tối giản nền trắng', platform: null, prompt_type: 'image', content: 'minimalist canvas, white background…', model: 'gpt-image-1', system_instruction: null, is_default: false, created_at: '' },
+  { id: 's2', name: 'Boho floral watercolor', platform: null, prompt_type: 'image', content: 'boho floral watercolor style…', model: 'gemini-2.5-flash-image', system_instruction: null, is_default: false, created_at: '' },
 ]
 
 const typeLabel = (t: string) => TYPES.find((x) => x.value === t)?.label ?? t
+const costLabel = (c?: number | null) => (c != null ? `~$${c.toFixed(2)}/ảnh` : '')
 
 export default function PromptAiPage() {
   const { apiKey } = useAuth()
   const promptsQuery = usePrompts()
+  const modelsQuery = useModels()
   // Real prompts require an API key + a wired generator service; otherwise (or on
   // a fetch error) fall back to the local sample list, mutated in place.
   const configured = !!apiKey && serviceConfigured.generator
@@ -48,6 +66,19 @@ export default function PromptAiPage() {
   // First real load (no cache yet) → skeleton rows instead of a blank table.
   const showSkeleton = configured && promptsQuery.isLoading
 
+  const models = (configured && modelsQuery.data?.length ? modelsQuery.data : FALLBACK_MODELS)
+  // Group models by provider, preserving first-seen provider order.
+  const groupedModels = useMemo(() => {
+    const groups: Array<{ provider: string; items: ImageModel[] }> = []
+    for (const m of models) {
+      let g = groups.find((x) => x.provider === m.provider)
+      if (!g) { g = { provider: m.provider, items: [] }; groups.push(g) }
+      g.items.push(m)
+    }
+    return groups
+  }, [models])
+  const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
+
   async function save() {
     if (!form.name.trim() || !form.content.trim()) {
       alert('Nhập tên và nội dung prompt.')
@@ -59,7 +90,13 @@ export default function PromptAiPage() {
     }
     setSaving(true)
     try {
-      const body = { name: form.name, content: form.content, prompt_type: form.prompt_type, model: form.model }
+      const body = {
+        name: form.name,
+        content: form.content,
+        prompt_type: form.prompt_type,
+        model: form.model,
+        system_instruction: form.system_instruction.trim() || null,
+      }
       if (form.id) await generatorApi.updatePrompt(apiKey, form.id, body)
       else await generatorApi.createPrompt(apiKey, body)
       setForm(EMPTY)
@@ -72,7 +109,14 @@ export default function PromptAiPage() {
   }
 
   function edit(p: PromptTemplate) {
-    setForm({ id: p.id, name: p.name, model: p.model ?? MODELS[0], content: p.content, prompt_type: p.prompt_type })
+    setForm({
+      id: p.id,
+      name: p.name,
+      model: p.model ?? DEFAULT_MODEL,
+      system_instruction: p.system_instruction ?? '',
+      content: p.content,
+      prompt_type: p.prompt_type,
+    })
   }
 
   async function remove(id: string) {
@@ -122,11 +166,17 @@ export default function PromptAiPage() {
             <div>
               <div className="mb-1 text-[11px] text-muted">Model</div>
               <select value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="field w-full">
-                {MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
+                {groupedModels.map((g) => (
+                  <optgroup key={g.provider} label={PROVIDER_LABEL[g.provider] ?? g.provider}>
+                    {g.items.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} · {costLabel(m.cost_per_image_usd)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
+                {/* Keep an unknown/legacy model selectable so editing never loses it. */}
+                {!modelById.has(form.model) && <option value={form.model}>{form.model}</option>}
               </select>
             </div>
             <div>
@@ -144,6 +194,15 @@ export default function PromptAiPage() {
               </select>
             </div>
           </div>
+        </div>
+        <div className="mt-2">
+          <div className="mb-1 text-[11px] text-muted">System Instruction (tuỳ chọn)</div>
+          <textarea
+            value={form.system_instruction}
+            onChange={(e) => setForm({ ...form, system_instruction: e.target.value })}
+            placeholder="Đặt context, tone, constraint cho model. Áp dụng mọi request dùng prompt này."
+            className="field min-h-[60px] w-full resize-y"
+          />
         </div>
         <div className="mt-2">
           <div className="mb-1 text-[11px] text-muted">Nội dung prompt</div>
@@ -184,8 +243,21 @@ export default function PromptAiPage() {
           {!showSkeleton &&
             prompts.map((p) => (
             <tr key={p.id} className="hover:bg-panel2">
-              <td className="border-b border-line px-2 py-1.5">{p.name}</td>
-              <td className="border-b border-line px-2 py-1.5 text-muted">{p.model ?? '—'}</td>
+              <td className="border-b border-line px-2 py-1.5">
+                <div className="flex items-center gap-1.5">
+                  {p.name}
+                  {p.system_instruction && (
+                    <span className="badge b-mu !text-[9px]" title={p.system_instruction}>SI</span>
+                  )}
+                </div>
+              </td>
+              <td className="border-b border-line px-2 py-1.5">
+                {p.model ? (
+                  <span className="badge b-mu font-mono !text-[10px]">{p.model}</span>
+                ) : (
+                  <span className="text-warn" title="Prompt chưa gán model">— chưa gán —</span>
+                )}
+              </td>
               <td className="border-b border-line px-2 py-1.5">
                 <span className="badge b-mu">{typeLabel(p.prompt_type)}</span>
               </td>

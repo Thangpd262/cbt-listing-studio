@@ -3,16 +3,21 @@ import { getListing, getSceneAnalysis, type SceneAnalysis } from './crawl-client
 import { generateTitle, generateDescription, generateImagePrompt, GEMINI_TEXT_MODEL } from './gemini'
 import { generateImage, type ImageProvider } from './image'
 import { uploadToStorage } from './storage'
-import { recordSpend, textCost, imageCost } from './spend'
+import { textCost, imageCost, providerForModel } from './spend'
+import { logAiCall } from './logAiCall'
 
 type Supabase = ReturnType<typeof createSupabaseClient>
 
 export type GenJob = {
   id: string
   account_id: string
+  user_id?: string | null
   listing_id: string
   platform: 'amazon' | 'walmart'
 }
+
+// Map the image provider enum to a spend provider string.
+const imageProviderName = (p: ImageProvider): string => (p === 'imagen' ? 'google' : 'openai')
 
 const DEFAULT_WALMART_COLORS = [
   'Black', 'White', 'Navy Blue', 'Red', 'Forest Green',
@@ -41,12 +46,16 @@ async function makeImage(
   variant?: { color: string }
 ): Promise<string> {
   const prompt = await generateImagePrompt(scene, platform, variant)
-  await recordSpend(supabase, {
+  // The prompt-building text call is part of producing the image (step image_gen).
+  await logAiCall(supabase, {
     account_id: job.account_id,
-    job_id: job.id,
+    user_id: job.user_id,
     listing_id: job.listing_id,
-    step: 'image_prompt',
     model: GEMINI_TEXT_MODEL,
+    provider: providerForModel(GEMINI_TEXT_MODEL),
+    step: 'image_gen',
+    images_requested: 0,
+    images_received: 0,
     input_tokens: prompt.inputTokens,
     output_tokens: prompt.outputTokens,
     cost_usd: textCost(GEMINI_TEXT_MODEL, prompt.inputTokens, prompt.outputTokens),
@@ -54,12 +63,15 @@ async function makeImage(
 
   const img = await generateImage(prompt.text, provider)
   const url = await uploadToStorage(img.buffer, path)
-  await recordSpend(supabase, {
+  await logAiCall(supabase, {
     account_id: job.account_id,
-    job_id: job.id,
+    user_id: job.user_id,
     listing_id: job.listing_id,
-    step: 'image',
     model: img.model,
+    provider: imageProviderName(img.provider),
+    step: 'image_gen',
+    images_requested: 1,
+    images_received: 1,
     cost_usd: imageCost(img.model),
   })
   return url
@@ -71,13 +83,16 @@ async function makeCopy(supabase: Supabase, job: GenJob, scene: SceneAnalysis) {
     generateTitle(scene, job.platform),
     generateDescription(scene, job.platform),
   ])
-  for (const [step, r] of [['title', title], ['description', description]] as const) {
-    await recordSpend(supabase, {
+  for (const [step, r] of [['title_gen', title], ['desc_gen', description]] as const) {
+    await logAiCall(supabase, {
       account_id: job.account_id,
-      job_id: job.id,
+      user_id: job.user_id,
       listing_id: job.listing_id,
-      step,
       model: GEMINI_TEXT_MODEL,
+      provider: providerForModel(GEMINI_TEXT_MODEL),
+      step,
+      images_requested: 0,
+      images_received: 0,
       input_tokens: r.inputTokens,
       output_tokens: r.outputTokens,
       cost_usd: textCost(GEMINI_TEXT_MODEL, r.inputTokens, r.outputTokens),

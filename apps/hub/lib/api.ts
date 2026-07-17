@@ -239,6 +239,11 @@ export type PromptTemplate = {
   prompt_type: 'image' | 'title' | 'description'
   content: string
   model: string | null
+  system_instruction: string | null
+  // Enriched by GET /api/prompts from the shared IMAGE_MODELS constant.
+  model_label?: string | null
+  model_provider?: string | null
+  cost_per_image_usd?: number | null
   is_default: boolean
   created_at: string
 }
@@ -248,6 +253,40 @@ export type PromptInput = {
   content: string
   prompt_type: string
   model?: string | null
+  system_instruction?: string | null
+}
+
+export type ImageModel = {
+  id: string
+  label: string
+  provider: string
+  cost_per_image_usd: number
+  supports_multi_image: boolean
+  max_images_per_request: number
+  notes?: string
+}
+
+export type SpendSummary = {
+  period: string
+  total_cost_usd: number
+  total_images: number
+  by_model: Array<{ model: string; label: string; total_cost_usd: number; total_images: number }>
+  by_step: Array<{ step: string; total_cost_usd: number }>
+  by_user: Array<{ user_id: string; email: string | null; total_cost_usd: number; total_images: number }>
+}
+
+export type ListingSpend = {
+  listing_id: string
+  total_cost_usd: number
+  total_images: number
+  breakdown: Array<{
+    step: string
+    model: string
+    images_requested: number
+    images_received: number
+    cost_usd: number
+    created_at: string
+  }>
 }
 
 export type GenImage = { id: string | null; url: string; expires_at: string | null }
@@ -301,6 +340,24 @@ export const generatorApi = {
       body: JSON.stringify(body),
     })
     return unwrap<GenImage>(res)
+  },
+  // Available image models (drives the prompt-form dropdown + cost display).
+  async getModels(apiKey: string) {
+    const res = await fetch(`${GENERATOR_URL}/api/models`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<ImageModel[]>(res)
+  },
+  // AI spend summary. period = 'today' | '7d' | '30d'; user_id is admin-only.
+  async getSpend(apiKey: string, params: { period?: string; user_id?: string } = {}) {
+    const qs = new URLSearchParams()
+    if (params.period) qs.set('period', params.period)
+    if (params.user_id) qs.set('user_id', params.user_id)
+    const res = await fetch(`${GENERATOR_URL}/api/spend?${qs.toString()}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<SpendSummary>(res)
+  },
+  // AI cost + breakdown for a single listing.
+  async getListingSpend(apiKey: string, listingId: string) {
+    const res = await fetch(`${GENERATOR_URL}/api/spend/listing/${listingId}`, { headers: apiKeyHeaders(apiKey) })
+    return unwrap<ListingSpend>(res)
   },
 }
 

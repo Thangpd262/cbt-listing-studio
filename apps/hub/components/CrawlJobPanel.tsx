@@ -2,15 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, Zap, Loader2, RotateCw, Trash2, User, Crosshair, ExternalLink } from 'lucide-react'
 import { crawlApi, generatorApi, listAmzApi, type SellingAccount } from '../lib/api'
 import ImageLightbox from './ImageLightbox'
+import ListingAiCost from './ListingAiCost'
 import { type SampleListing } from '../lib/sample-data'
 
 type GalleryImage = { id: string; url: string; ai?: boolean }
 
 export type PanelGroup = { id: string; name: string }
 export type PanelConfig = { id: string; name: string; from: string; productType?: string | null; imageUrls?: string[] }
-export type PanelPrompt = { id: string; name: string }
-
-const AI_MODELS = ['gpt-image-1', 'gemini-2.5-flash-image']
+// Model is bound to the prompt (no separate model picker) — carry its metadata so
+// the card can show a chip and the legacy "no model" warning.
+export type PanelPrompt = {
+  id: string
+  name: string
+  model?: string | null
+  model_label?: string | null
+  cost_per_image_usd?: number | null
+}
 
 // SKU short-code by Amazon product_type. SKU = {SHORT}-{unix10}.
 const TYPE_SHORT: Record<string, string> = {
@@ -78,7 +85,6 @@ export default function CrawlJobPanel({
   const [config, setConfig] = useState('')
   const [aiDescription, setAiDescription] = useState(false)
   const [promptId, setPromptId] = useState('')
-  const [model, setModel] = useState(AI_MODELS[0])
   const [genLoading, setGenLoading] = useState(false)
   const [regenId, setRegenId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -165,7 +171,11 @@ export default function CrawlJobPanel({
     })
   }
 
-  // Generate one image via the selected prompt + model.
+  // The model is bound to the selected prompt (resolved server-side), so no model
+  // is sent from here — the chip below just reflects the prompt's model.
+  const selectedPrompt = useMemo(() => prompts.find((p) => p.id === promptId), [prompts, promptId])
+
+  // Generate one image via the selected prompt (model comes from the prompt).
   async function genOne(): Promise<string> {
     if (!apiKey) throw new Error('Cần API key')
     if (!promptId) throw new Error('Chọn prompt')
@@ -175,7 +185,6 @@ export default function CrawlJobPanel({
       listing_id: listing.id,
       prompt_id: promptId,
       platform,
-      model,
       reference_image_url: referenceUrl,
     })
     return r.url
@@ -419,6 +428,7 @@ export default function CrawlJobPanel({
         <div data-testid="ai-section">
           <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
             <Sparkles size={12} className="text-brand" /> Ảnh AI <span className="text-muted">({aiImages.length})</span>
+            {apiKey && aiImages.length > 0 && <span className="ml-auto"><ListingAiCost listingId={listing.id} /></span>}
           </div>
           {aiImages.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -429,20 +439,13 @@ export default function CrawlJobPanel({
           ) : (
             <div className="text-[12px] text-faint">—</div>
           )}
-          {/* prompt + model + gen */}
+          {/* prompt + gen (model is bound to the prompt — no separate picker) */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <select value={promptId} onChange={(e) => setPromptId(e.target.value)} className="field min-w-[150px] flex-1">
               <option value="">— chọn prompt —</option>
               {prompts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
-                </option>
-              ))}
-            </select>
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="field">
-              {AI_MODELS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
                 </option>
               ))}
             </select>
@@ -454,6 +457,22 @@ export default function CrawlJobPanel({
               {genLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Gen ảnh AI
             </button>
           </div>
+          {/* Model chip from the selected prompt, or a legacy "no model" warning */}
+          {selectedPrompt && (
+            selectedPrompt.model ? (
+              <div className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-line bg-panel2 px-2 py-1 text-[11px] text-muted">
+                <Sparkles size={11} className="text-brand" />
+                Model: <span className="font-medium text-fg">{selectedPrompt.model_label ?? selectedPrompt.model}</span>
+                {selectedPrompt.cost_per_image_usd != null && (
+                  <span className="text-faint">· ~${selectedPrompt.cost_per_image_usd.toFixed(2)}/ảnh</span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-1.5 rounded-md border border-warn/40 bg-warn/10 px-2 py-1 text-[11px] text-warn">
+                Prompt này chưa gán model — cập nhật trong tab Prompt ảnh AI.
+              </div>
+            )
+          )}
         </div>
 
         {/* Tags → mapped to search_term on the job */}

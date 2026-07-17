@@ -81,7 +81,13 @@ export default function CrawlPage() {
 
   const imagePrompts: PanelPrompt[] = (promptsQuery.data ?? [])
     .filter((x) => x.prompt_type === 'image')
-    .map((x) => ({ id: x.id, name: x.name }))
+    .map((x) => ({
+      id: x.id,
+      name: x.name,
+      model: x.model,
+      model_label: x.model_label,
+      cost_per_image_usd: x.cost_per_image_usd,
+    }))
   const prompts: PanelPrompt[] = apiKey && imagePrompts.length ? imagePrompts : SAMPLE_PROMPTS
 
   const sellingAccounts = (sellingQuery.data ?? []).filter((a) => a.platform === platform && a.is_active)

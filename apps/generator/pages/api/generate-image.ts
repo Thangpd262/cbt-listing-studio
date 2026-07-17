@@ -1,6 +1,8 @@
 import { withAuth, createSupabaseClient, created, error } from '@cbt/shared'
 import { generateImage, generateImageFromReference, type ImageProvider } from '../../lib/image'
 import { uploadToStorage } from '../../lib/storage'
+import { imageCost } from '../../lib/spend'
+import { logAiCall } from '../../lib/logAiCall'
 
 // POST — generate ONE ad-hoc image from a prompt template (or raw prompt) and
 // return its URL. Lighter than the full pipeline; used by the crawl job panel's
@@ -22,6 +24,7 @@ export default withAuth(async (req, res, auth) => {
   // The template's model decides the provider unless a raw prompt is used.
   let promptText = typeof prompt === 'string' ? prompt.trim() : ''
   let templateModel: string | null = null
+  let usedPromptId: string | null = null
   if (!promptText && prompt_id) {
     const { data: tpl } = await supabase
       .from('prompt_templates')
@@ -32,6 +35,7 @@ export default withAuth(async (req, res, auth) => {
     if (!tpl) return error(res, 404, 'Prompt template không tồn tại')
     promptText = tpl.content
     templateModel = tpl.model ?? null
+    usedPromptId = prompt_id
   }
   if (!promptText) return error(res, 400, 'Cần prompt_id hoặc prompt')
 
@@ -54,6 +58,20 @@ export default withAuth(async (req, res, auth) => {
         : await generateImage(promptText, imgProvider, model ?? templateModel)
     const path = `${auth.account_id}/adhoc/${crypto.randomUUID()}.png`
     const url = await uploadToStorage(gen.buffer, path)
+
+    // Attribute this ad-hoc image to the user + listing.
+    await logAiCall(supabase, {
+      account_id: auth.account_id,
+      user_id: auth.user_id,
+      listing_id,
+      prompt_template_id: usedPromptId,
+      model: gen.model,
+      provider: gen.provider === 'imagen' ? 'google' : 'openai',
+      step: 'image_gen',
+      images_requested: 1,
+      images_received: 1,
+      cost_usd: imageCost(gen.model),
+    })
 
     // Best-effort persistence for retention cleanup.
     const { data: job } = await supabase
@@ -83,6 +101,21 @@ export default withAuth(async (req, res, auth) => {
 
     return created(res, { id: assetId, url, expires_at: expiresAt })
   } catch (err) {
-    return error(res, 500, err instanceof Error ? err.message : 'Gen ảnh thất bại')
+    const message = err instanceof Error ? err.message : 'Gen ảnh thất bại'
+    await logAiCall(supabase, {
+      account_id: auth.account_id,
+      user_id: auth.user_id,
+      listing_id,
+      prompt_template_id: usedPromptId,
+      model: model ?? templateModel ?? 'unknown',
+      provider: imgProvider === 'imagen' ? 'google' : 'openai',
+      step: 'image_gen',
+      images_requested: 1,
+      images_received: 0,
+      cost_usd: 0,
+      status: 'failed',
+      error_message: message,
+    })
+    return error(res, 500, message)
   }
 })
