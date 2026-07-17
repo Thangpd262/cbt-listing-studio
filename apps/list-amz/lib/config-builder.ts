@@ -1,6 +1,20 @@
 // Builds SP-API attribute objects from a product_configs row (wrap/kind schema).
 // Matches the field schema used in amz-spapi-asin project.
 
+// Attributes Amazon rejects with 90000900 for most product types.
+// Must be stripped from any listing body before PUT/PATCH.
+export const INAPPLICABLE_ATTRS = new Set([
+  'dangerous_goods_regulations',
+  'size_map',
+  'included_components',
+  'batteries_required',
+  'lithium_battery_packaging',
+  'lithium_battery_energy_content',
+  'lithium_battery_weight',
+  'number_of_lithium_ion_cells',
+  'number_of_lithium_metal_cells',
+])
+
 export type FieldWrap = 'mkt' | 'lang' | 'raw' | ''
 export type FieldKind =
   | 'attr'
@@ -208,11 +222,16 @@ export function buildListingBodyFromConfig(
   values: Record<string, string>,
   marketplaceId: string
 ): object {
-  const attributes = {
+  const rawAttributes = {
     ...buildAttributesFromConfig(config.fields, values, marketplaceId),
     ...buildOfferAttributes(config.fields, values, marketplaceId),
     ...buildVariationAttributes(config.fields, values, config.variation_theme, marketplaceId),
   }
+
+  // Strip attributes Amazon rejects with 90000900 for most product types
+  const attributes = Object.fromEntries(
+    Object.entries(rawAttributes).filter(([k]) => !INAPPLICABLE_ATTRS.has(k))
+  )
 
   return {
     productType: config.product_type,
