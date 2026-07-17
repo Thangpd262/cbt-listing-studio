@@ -57,6 +57,8 @@ export default function CrawlPage() {
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
+  // Crawl source platform (distinct from the target marketplace `platform`).
+  const [crawlPlatform, setCrawlPlatform] = useState<'etsy' | 'aliexpress'>('etsy')
 
   // Product groups are fetched for all platforms then filtered here, so one
   // cache entry (and one prefetch) serves both Amazon and Walmart.
@@ -104,7 +106,7 @@ export default function CrawlPage() {
     try {
       const res = await crawlApi.getListings(apiKey, {
         limit: 48,
-        platform: 'etsy',
+        platform: crawlPlatform,
         user_id: isAdmin && userFilter ? userFilter : undefined,
       })
       setListings(
@@ -132,7 +134,7 @@ export default function CrawlPage() {
       setLoaded(true)
       setLoading(false)
     }
-  }, [apiKey, isAdmin, userFilter])
+  }, [apiKey, isAdmin, userFilter, crawlPlatform])
 
   useEffect(() => {
     loadListings()
@@ -212,6 +214,17 @@ export default function CrawlPage() {
 
       {/* Filter bar */}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        {/* Nguồn crawl */}
+        <select
+          value={crawlPlatform}
+          onChange={(e) => setCrawlPlatform(e.target.value as 'etsy' | 'aliexpress')}
+          className="field"
+          title="Nguồn crawl"
+        >
+          <option value="etsy">Etsy</option>
+          <option value="aliexpress">AliExpress</option>
+        </select>
+
         {/* Ngách */}
         <select value={group} onChange={(e) => setGroup(e.target.value)} className="field" title="Lọc theo ngách">
           <option value="">— Tất cả ngách —</option>
